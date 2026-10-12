@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TEE Simulator</title>
+<style>
+:root{
+  --bg:#0b0e12; --panel:#12171d; --panel2:#171d25; --line:#26303b; --text:#d9e1e8; --muted:#8a97a5;
+  --accent:#4fd1c5; --accent2:#f6ad55; --danger:#fc8181;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:"Hiragino Sans","Noto Sans JP","Segoe UI",system-ui,sans-serif;font-size:13px;overflow:hidden}
+#glcanvas{position:fixed;left:0;top:0;width:100vw;height:100vh;display:block;z-index:0;pointer-events:none}
+#app{position:relative;z-index:1;height:100vh;display:grid;grid-template-columns:310px 1fr 1fr;grid-template-rows:auto 1fr;gap:0}
+header{grid-column:1/4;display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);background:rgba(18,23,29,.96);flex-wrap:wrap}
+header h1{font-size:14px;margin:0 8px 0 0;font-weight:600;letter-spacing:.04em;white-space:nowrap}
+header h1 small{color:var(--muted);font-weight:400;margin-left:6px}
+.presets{display:flex;gap:6px;flex-wrap:wrap}
+.presets button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+.presets button:hover{border-color:var(--accent)}
+.presets button.active{background:#173b3a;border-color:var(--accent);color:#bff5ef}
+.presets button .ang{color:var(--muted);font-size:11px;margin-left:4px}
+#handlePanel{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;overflow-x:hidden;padding:6px 8px 12px}
+#handleSvg{width:100%;height:auto;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+.readouts{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-top:4px}
+.ro{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 7px}
+.ro .k{color:var(--muted);font-size:10.5px}
+.ro .v{font-variant-numeric:tabular-nums;font-size:14px;font-weight:600}
+details{margin-top:8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
+.slider{display:grid;grid-template-columns:78px 1fr 46px;align-items:center;gap:6px;margin:5px 0}
+.slider label{color:var(--muted);font-size:11.5px}
+.slider input{width:100%}
+.slider span{text-align:right;font-variant-numeric:tabular-nums;font-size:11.5px}
+.toggles{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px}
+.toggles label{font-size:12px;color:var(--text);display:flex;align-items:center;gap:4px;cursor:pointer}
+.hint{color:var(--muted);font-size:11px;line-height:1.5;margin-top:8px}
+.view{position:relative;min-width:0;min-height:0;border-right:1px solid var(--line)}
+#view3d{touch-action:none}
+.vlabel{position:absolute;left:8px;top:6px;font-size:11px;color:var(--muted);pointer-events:none;letter-spacing:.05em}
+.vbtns{position:absolute;right:8px;top:6px;display:flex;gap:4px}
+.vbtns button{background:rgba(23,29,37,.85);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer}
+#viewEcho{background:transparent}
+#echoOverlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+#err{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;background:#2a1215;border:1px solid var(--danger);color:#ffd7d7;padding:16px 20px;border-radius:8px;max-width:560px;display:none;line-height:1.6;white-space:pre-wrap}
+#loading{position:fixed;inset:0;z-index:15;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;background:var(--bg)}
+@media (max-width: 980px){
+  html,body{height:auto;overflow:auto}
+  #glcanvas{position:fixed}
+  #app{height:auto;grid-template-columns:1fr;grid-template-rows:auto}
+  header{grid-column:1}
+  #viewEcho{height:62vw;min-height:240px;order:1}
+  #view3d{height:62vw;min-height:240px;order:2;border-top:1px solid var(--line)}
+  #handlePanel{order:3;border-right:none;border-top:1px solid var(--line)}
+  #handleSvg{max-width:420px;margin:0 auto}
+  header{order:0}
+}
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+<div id="loading">読み込み中…</div>
+<div id="err"></div>
+
+<div id="app">
+  <header>
+    <h1>TEE Simulator<small>経食道心エコー 操作トレーナー</small></h1>
+    <div class="presets" id="presets"></div>
+  </header>
+
+  <aside id="handlePanel">
+    <svg id="handleSvg" viewBox="0 0 300 552" aria-label="TEEプローブ操作部"></svg>
+    <div class="readouts">
+      <div class="ro"><div class="k">挿入深度（門歯から）</div><div class="v" id="roDepth">–</div></div>
+      <div class="ro"><div class="k">主軸回転</div><div class="v" id="roRot">–</div></div>
+      <div class="ro"><div class="k">前屈 / 後屈（大ダイヤル）</div><div class="v" id="roAnte">–</div></div>
+      <div class="ro"><div class="k">左屈 / 右屈（小ダイヤル）</div><div class="v" id="roLR">–</div></div>
+      <div class="ro" style="grid-column:1/3"><div class="k">オムニプレーン角 / 近い標準断面</div><div class="v" id="roOmni">–</div></div>
+    </div>
+    <details id="fine">
+      <summary>微調整スライダー・表示設定</summary>
+      <div id="sliders"></div>
+      <div class="toggles">
+        <label><input type="checkbox" id="tgCut" checked>3D心臓を走査面でカット</label>
+        <label><input type="checkbox" id="tgGhost" checked>カット側の全体輪郭（ゴースト）</label>
+        <label><input type="checkbox" id="tgLabels" checked>エコー上の解剖ラベル</label>
+        <label><input type="checkbox" id="tgSpeckle" checked>スペックル</label>
+        <label><input type="checkbox" id="tgLines" checked>走査線</label>
+        <label><input type="checkbox" id="tgFan" checked>3Dにビーム扇</label>
+        <label><input type="checkbox" id="tgBigCW" checked>大ダイヤル：時計回り＝前屈</label>
+        <label><input type="checkbox" id="tgSmallCW" checked>小ダイヤル：時計回り＝右屈</label>
+      </div>
+    </details>
+    <div class="hint">
+      <b>操作</b>：大ダイヤル（外輪）＝前屈/後屈。親指を当てた縁をシャフトから離す（上へ・時計回り）＝前屈、シャフト側へ引く（下へ・反時計回り）＝後屈。小ダイヤル（内輪）＝左右屈。グリップを上下ドラッグ＝挿入/引き抜き、左右ドラッグ＝時計/反時計回転。オムニプレーンは ＋/− ボタン長押しまたはゲージをドラッグ。<br>
+      キーボード：W/S 挿入、A/D 回転、↑/↓ 前後屈、←/→ 左右屈、Q/E オムニ角。
+    </div>
+  </aside>
+
+  <section class="view" id="view3d">
+    <div class="vlabel">3D 解剖ビュー（ドラッグで回転・ホイールでズーム）</div>
+    <div class="vbtns">
+      <button data-cam="front">前面</button><button data-cam="left">左側</button><button data-cam="top">頭側</button><button data-cam="probe">プローブ</button>
+    </div>
+  </section>
+
+  <section class="view" id="viewEcho">
+    <canvas id="echoOverlay"></canvas>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="bodyparts3d.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ======================================================================
+   0. 起動チェック（防御的）
+   ====================================================================== */
+var errBox = document.getElementById('err');
+var loadingBox = document.getElementById('loading');
+var errorShown = false;
+function showError(msg){
+  if (errorShown) return;
+  errorShown = true;
+  if (loadingBox) loadingBox.style.display = 'none';
+  if (errBox){ errBox.textContent = msg; errBox.style.display = 'block'; }
+}
+if (typeof window.THREE === 'undefined'){
+  showError('Three.js (r128) を読み込めませんでした。\nインターネット接続（CDN）を確認してください。');
+  return;
+}
+var THREE = window.THREE;
+var BP3D = (typeof globalThis !== 'undefined' && globalThis.BP3D) ? globalThis.BP3D : window.BP3D;
+if (!BP3D || !Array.isArray(BP3D.parts) || BP3D.parts.length === 0){
+  showError('bodyparts3d.js が見つからないか、内容が空です。\nindex.html と同じフォルダに bodyparts3d.js を置き、\n  python -m http.server 8000\nで配信して http://localhost:8000/ を開いてください。');
+  return;
+}
+
+/* ======================================================================
+   1. 定数・状態
+   ====================================================================== */
+var DEG = Math.PI / 180;
+var LIMITS = {
+  depth: [0, 270],   // mm（経路長に合わせて後で更新）
+  rot:   [-180, 180],
+  ante:  [-90, 120],
+  lr:    [-45, 45],
+  omni:  [0, 180]
+};
+// 走査面の投影範囲（深度レンジ D に対する係数）
+var FR = { L: -0.74, R: 0.74, B: -1.02, T: 0.04 };
+var SECTOR_HALF = 45; // 扇の半角（度）
+var SEC_H = 512;
+var SEC_W = Math.round(SEC_H * (FR.R - FR.L) / (FR.T - FR.B));
+
+var state = { depth: 101.5, rot: -21.2, ante: -33.8, lr: 5.6, omni: 0 };
+var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true, cut: true, fan: true, ghost: true,
+  bigCW: true,    // true : 大ダイヤル時計回り（親指でシャフトから離す方向）＝前屈
+  smallCW: true   // true : 小ダイヤル時計回り＝右屈
+};
+function bigSign(){ return settings.bigCW ? 1 : -1; }
+function smallSign(){ return settings.smallCW ? 1 : -1; }
+var dirty = true;        // 断面再計算フラグ
+var overlayDirty = true; // オーバーレイ再描画フラグ
+
+// 標準断面プリセット（このBodyParts3Dモデル上でランドマーク最適化した値）
+var PRESETS = [
+  { id:'ME4C',  name:'ME 4Ch',    ja:'中位食道四腔像',      s:{ depth:101.5, rot:-21.2, ante:-33.8, lr:5.6,  omni:0   } },
+  { id:'ME2C',  name:'ME 2Ch',    ja:'中位食道二腔像',      s:{ depth:115.0, rot:-19.7, ante:-29.0, lr:1.1,  omni:85  } },
+  { id:'MELAX', name:'ME LAX',    ja:'中位食道長軸像',      s:{ depth:115.0, rot:-19.7, ante:-29.0, lr:1.1,  omni:122 } },
+  { id:'AVSAX', name:'ME AV SAX', ja:'大動脈弁短軸像',      s:{ depth:108.7, rot:-2.0,  ante:-5.9,  lr:-0.1, omni:27  } },
+  { id:'BICAV', name:'ME Bicaval',ja:'上下大静脈像',        s:{ depth:95.2,  rot:26.1,  ante:-5.7,  lr:7.7,  omni:90  } },
+  { id:'TGSAX', name:'TG mid SAX',ja:'経胃 乳頭筋レベル短軸', s:{ depth:233.2, rot:-8.6,  ante:36.2,  lr:-13.5,omni:7   } }
+];
+
+function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? v : d; }
+function setParam(k, v){
+  if (!LIMITS[k]) return;
+  var nv = clamp(num(v, state[k]), LIMITS[k][0], LIMITS[k][1]);
+  if (nv !== state[k]){ state[k] = nv; dirty = true; overlayDirty = true; }
+}
+
+/* ======================================================================
+   2. TEEプローブ拘束運動モデル（食道〜胃の走行ライン）
+      座標系: BodyParts3D 準拠  +X=患者左, +Y=背側, +Z=頭側 (mm)
+   ====================================================================== */
+function makeProbeModel(){
+  var PATH_PTS = [[2,34,175],[6,38,130],[12,40,95],[17,40,62],[20,38,32],[23,33,6],[26,24,-14],[29,13,-32],[31,4,-50],[33,-4,-68],[35,-10,-84]];
+  var curve = new THREE.CatmullRomCurve3(PATH_PTS.map(function(p){ return new THREE.Vector3(p[0],p[1],p[2]); }), false, 'centripetal');
+  var L = curve.getLength(), N = 600, F = [];
+  var fPrev = null, tPrev = null;
+  for (var i = 0; i <= N; i++){
+    var u = i / N;
+    var p = curve.getPointAt(u);
+    var t = curve.getTangentAt(u).normalize();
+    var f;
+    if (!fPrev){ f = new THREE.Vector3(0,-1,0); }          // 起点では腹側（前方）を向く
+    else { var q = new THREE.Quaternion().setFromUnitVectors(tPrev, t); f = fPrev.clone().applyQuaternion(q); } // 平行移動フレーム
+    f.addScaledVector(t, -f.dot(t)).normalize();
+    F.push({ p:p, t:t, f:f }); fPrev = f; tPrev = t;
+  }
+  var BEND = 38; // 屈曲部の長さ (mm)
+  var GE = 0;   // 食道胃接合部の経路位置
+  (function(){ var best = 1e9; for (var i = 0; i <= N; i++){ var d = Math.abs(F[i].p.z + 14); if (d < best){ best = d; GE = i / N * L; } } })();
+
+  function frameAt(s){
+    var u = clamp(s / L, 0, 1) * N;
+    var i = Math.min(N - 1, Math.floor(u)), a = u - i;
+    var A = F[i], B = F[i + 1];
+    var p = A.p.clone().lerp(B.p, a), t = A.t.clone().lerp(B.t, a).normalize(), f = A.f.clone().lerp(B.f, a);
+    f.addScaledVector(t, -f.dot(t)).normalize();
+    return { p:p, t:t, f:f };
+  }
+  function bendInfo(st){
+    var b = frameAt(st.depth);
+    var t = b.t, f = b.f.clone().applyQuaternion(new THREE.Quaternion().setFromAxisAngle(t, num(st.rot,0) * DEG)); // 時計回り(+)=患者右へ
+    var l = new THREE.Vector3().crossVectors(f, t).normalize();   // 0°で画面右＝患者左
+    var r = l.clone().negate();
+    var a = num(st.ante,0) * DEG, c = num(st.lr,0) * DEG, th = Math.hypot(a, c);
+    var d = null, k = null;
+    if (th > 1e-5){ d = f.clone().multiplyScalar(a / th).addScaledVector(r, c / th).normalize(); k = new THREE.Vector3().crossVectors(t, d).normalize(); }
+    var g = clamp((st.depth - GE) / 25, 0, 1);
+    var kk = 0.3 + 0.7 * g;        // 食道内では壁に拘束されて先端変位を抑制、胃内では自由
+    return { b:b, t:t, f:f, l:l, th:th, d:d, k:k, kk:kk };
+  }
+  function pose(st){
+    var I = bendInfo(st);
+    var p = I.b.p.clone(), tt = I.t.clone(), ff = I.f.clone(), ll = I.l.clone();
+    if (I.th > 1e-5){
+      var qb = new THREE.Quaternion().setFromAxisAngle(I.k, I.th);
+      tt.applyQuaternion(qb); ff.applyQuaternion(qb); ll.applyQuaternion(qb);
+      p.addScaledVector(I.d, I.kk * BEND * (1 - Math.cos(I.th)) / I.th).addScaledVector(I.t, I.kk * BEND * (Math.sin(I.th) / I.th - 1));
+    }
+    var ph = num(st.omni,0) * DEG;
+    var e = ll.clone().multiplyScalar(Math.cos(ph)).addScaledVector(tt, -Math.sin(ph)).normalize(); // 画面右方向
+    var n = new THREE.Vector3().crossVectors(ff, e).normalize();                                     // 走査面法線
+    return { origin:p, beam:ff, lat:e, normal:n, tip:tt, left:ll };
+  }
+  // プローブ描画用の中心線（シャフト＋屈曲部）
+  function probeCenterline(st){
+    var I = bendInfo(st), pts = [];
+    var s0 = Math.max(0, st.depth - BEND);
+    var nS = 40;
+    for (var i = 0; i <= nS; i++){ pts.push(frameAt(s0 * i / nS).p); }
+    var nB = 24;
+    for (var j = 1; j <= nB; j++){
+      var u = j / nB, s = s0 + (st.depth - s0) * u;
+      var q = frameAt(s).p;
+      if (I.th > 1e-5){
+        var tu = I.th * u, L2 = BEND * u;
+        q.addScaledVector(I.d, I.kk * L2 * (1 - Math.cos(tu)) / tu).addScaledVector(I.t, I.kk * L2 * (Math.sin(tu) / tu - 1));
+      }
+      pts.push(q);
+    }
+    // 重複点を除去（CatmullRomの退化防止）
+    var out = [pts[0]];
+    for (var m = 1; m < pts.length; m++){ if (pts[m].distanceTo(out[out.length - 1]) > 0.3) out.push(pts[m]); }
+    if (out.length < 2) out.push(out[0].clone().add(new THREE.Vector3(0,0,-1)));
+    return out;
+  }
+  return { curve:curve, length:L, frameAt:frameAt, pose:pose, probeCenterline:probeCenterline, GE:GE, BEND:BEND };
+}
+
+var probe = makeProbeModel();
+LIMITS.depth = [0, Math.floor(probe.length) - 2];
+
+function depthRegion(s){
+  if (s < 70) return 'UE（上部食道）';
+  if (s < probe.GE - 15) return 'ME（中位食道）';
+  if (s < probe.GE + 12) return 'LE / GEJ（下部食道〜噴門）';
+  if (s < 245) return 'TG（経胃）';
+  return 'DTG（深部経胃）';
+}
+function incisorCm(s){ return 20 + s / 10; }
+
+/* ======================================================================
+   3. メッシュ構築
+   ====================================================================== */
+function classify(part){
+  var id = String(part.fileId || ''), nm = String(part.name || '');
+  if (/FJ2428/.test(id)) return { kind:'myo',   fill:0.60, slabW:0.55, slabG:0.75, valve:0, lbl:'myo' };
+  if (/FJ2439|FJ2438/.test(id)) return { kind:'atrium', fill:0.52, slabW:0.55, slabG:0.70, valve:0 };
+  if (/FJ3413|FJ2966|FJ3645|FJ3441|FJ3659/.test(id)) return { kind:'vessel', fill:0.0, slabW:1.25, slabG:0.85, valve:0 };
+  if (/弁|TV|MV|AV|PV/.test(nm) || /FJ24(17|20|21|26|27|31|32|33|34|35|36)/.test(id)) return { kind:'valve', fill:0.95, slabW:1.25, slabG:1.0, valve:1 };
+  return { kind:'other', fill:0.5, slabW:0.6, slabG:0.7, valve:0 };
+}
+
+var parts = [];
+(function buildParts(){
+  BP3D.parts.forEach(function(p, idx){
+    try {
+      if (!p || !Array.isArray(p.vertices) || !Array.isArray(p.faces)) return;
+      var nv = Math.floor(p.vertices.length / 3);
+      if (nv < 3 || p.faces.length < 3) return;
+      var pos = new Float32Array(nv * 3);
+      for (var i = 0; i < nv * 3; i++) pos[i] = num(+p.vertices[i], 0);
+      var nf = Math.floor(p.faces.length / 3);
+      var IdxArr = nv < 65535 ? Uint16Array : Uint32Array;
+      var tmp = [];
+      for (var f = 0; f < nf; f++){
+        var a = p.faces[f*3] | 0, b = p.faces[f*3+1] | 0, c = p.faces[f*3+2] | 0;
+        if (a < 0 || b < 0 || c < 0 || a >= nv || b >= nv || c >= nv) continue;
+        tmp.push(a, b, c);
+      }
+      if (tmp.length < 3) return;
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setIndex(new THREE.BufferAttribute(new IdxArr(tmp), 1));
+      g.computeVertexNormals();
+      g.computeBoundingSphere();
+      var color = new THREE.Color();
+      try { color.set(p.color || '#cc6677'); } catch (e) { color.set('#cc6677'); }
+      parts.push({ name: String(p.name || ('part' + idx)), fileId: String(p.fileId || ''), geom: g, color: color,
+                   alpha: clamp(num(+p.alpha, 0.6), 0.05, 1), cls: classify(p), verts: pos });
+    } catch (e) { console.warn('part skipped', idx, e); }
+  });
+})();
+if (parts.length === 0){ showError('心臓パーツのメッシュを1つも構築できませんでした（bodyparts3d.js の形式を確認してください）。'); return; }
+
+// ランドマーク（エコー上のラベル用）
+var LM = (function(){
+  function centroidOf(re){
+    var c = new THREE.Vector3(), n = 0;
+    parts.forEach(function(pt){ if (re.test(pt.fileId)){ var v = pt.verts; for (var i = 0; i < v.length; i += 3){ c.x += v[i]; c.y += v[i+1]; c.z += v[i+2]; n++; } } });
+    return n ? c.multiplyScalar(1 / n) : null;
+  }
+  var MV = centroidOf(/FJ2420|FJ2432/), APEX = new THREE.Vector3(62,-60,10);
+  var list = [
+    { t:'LA',  p: centroidOf(/FJ2438/), tol: 16 },
+    { t:'RA',  p: centroidOf(/FJ2439/), tol: 16 },
+    { t:'LV',  p: MV ? MV.clone().lerp(APEX, 0.42) : null, tol: 16 },
+    { t:'RV',  p: new THREE.Vector3(13,-47,25), tol: 16 },
+    { t:'MV',  p: MV, tol: 9 },
+    { t:'TV',  p: centroidOf(/FJ2421|FJ2433|FJ2436/), tol: 9 },
+    { t:'AV',  p: centroidOf(/FJ2426|FJ2431|FJ2435/), tol: 8 },
+    { t:'PV',  p: centroidOf(/FJ2417|FJ2427|FJ2434/), tol: 8 },
+    { t:'Ao',  p: centroidOf(/FJ3413/), tol: 11 },
+    { t:'PA',  p: centroidOf(/FJ2966/), tol: 11 },
+    { t:'SVC', p: new THREE.Vector3(-15,-17,104), tol: 11 },
+    { t:'IVC', p: new THREE.Vector3(-14.5,-15.6,10), tol: 11 }
+  ];
+  return list.filter(function(o){ return o.p; });
+})();
+
+/* ======================================================================
+   4. レンダラ（単一WebGLコンテキスト / シザーで3D・エコーを描き分け）
+   ====================================================================== */
+var canvas = document.getElementById('glcanvas');
+var renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, stencil: true, alpha: false });
+} catch (e) {
+  showError('WebGL を初期化できませんでした。ブラウザのハードウェアアクセラレーション設定を確認してください。');
+  return;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.autoClear = false;
+renderer.localClippingEnabled = true;
+var GLSL_HP = renderer.capabilities && renderer.capabilities.precision === 'highp';
+
+function resizeRenderer(){
+  var w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  overlayDirty = true;
+}
+resizeRenderer();
+window.addEventListener('resize', resizeRenderer);
+
+/* ---------- 4a. 走査面 断面キャプチャ (Render-to-Texture) ---------- */
+var rtSec = new THREE.WebGLRenderTarget(SEC_W, SEC_H, {
+  minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat,
+  depthBuffer: true, stencilBuffer: true, generateMipmaps: false
+});
+var rtEcho = new THREE.WebGLRenderTarget(SEC_W, SEC_H, {
+  minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat,
+  depthBuffer: false, stencilBuffer: false, generateMipmaps: false
+});
+
+var secCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -6, 400);
+secCam.matrixAutoUpdate = false;
+
+// クリッピングプレーン（THREE.Plane）
+var clipBack = new THREE.Plane(new THREE.Vector3(0,0,1), 0);   // 走査面より奥側のみ残す
+var slabPlanes = {};                                           // 幅ごとのスラブ（薄板）
+function slabFor(w){
+  var key = w.toFixed(2);
+  if (!slabPlanes[key]) slabPlanes[key] = { w: w, planes: [ new THREE.Plane(), new THREE.Plane() ] };
+  return slabPlanes[key].planes;
+}
+var clip3D = new THREE.Plane(new THREE.Vector3(0,0,1), 1e6);   // 3Dビューの心臓カット
+
+// (1) パリティ（偶奇）ステンシル：閉曲面の内部＝断面の実質部
+var parityMat = new THREE.MeshBasicMaterial({
+  colorWrite: false, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+  stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc, stencilRef: 0, stencilFuncMask: 0xff, stencilWriteMask: 0xff,
+  stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.InvertStencilOp, stencilZPass: THREE.InvertStencilOp,
+  clippingPlanes: [clipBack]
+});
+var fillMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff, depthTest: false, depthWrite: false,
+  stencilWrite: true, stencilFunc: THREE.EqualStencilFunc, stencilRef: 1, stencilFuncMask: 0x01, stencilWriteMask: 0xff,
+  stencilFail: THREE.ZeroStencilOp, stencilZFail: THREE.ZeroStencilOp, stencilZPass: THREE.ZeroStencilOp,
+  blending: THREE.CustomBlending, blendEquation: THREE.MaxEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor
+});
+var quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 2);
+quadCam.position.set(0, 0, 1); quadCam.updateMatrixWorld(true);
+var fillScene = new THREE.Scene();
+fillScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fillMat));
+
+// (2) スラブ境界：走査面±w の薄板に入った表面＝境界線（法線とビーム方向から鏡面反射強度）
+var slabVS = [
+  '#include <clipping_planes_pars_vertex>',
+  'varying vec3 vN; varying vec3 vW;',
+  'void main(){',
+  '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+  '  vW = wp.xyz;',
+  '  vN = normalize(mat3(modelMatrix) * normal);',
+  '  vec4 mvPosition = viewMatrix * wp;',
+  '  gl_Position = projectionMatrix * mvPosition;',
+  '  #include <clipping_planes_vertex>',
+  '}'
+].join('\n');
+var slabFS = [
+  '#include <clipping_planes_pars_fragment>',
+  'uniform vec3 uOrigin; uniform float uGain; uniform float uValve;',
+  'varying vec3 vN; varying vec3 vW;',
+  'void main(){',
+  '  #include <clipping_planes_fragment>',
+  '  vec3 dir = vW - uOrigin; float L = length(dir); dir = L > 1e-3 ? dir / L : vec3(0.0, 0.0, 1.0);',
+  '  vec3 n = normalize(vN);',
+  '  float spec = abs(dot(n, dir));',
+  '  spec = spec * spec;',
+  '  float g = uGain * (0.28 + 0.72 * spec);',
+  '  gl_FragColor = vec4(0.0, g, uValve, 1.0);',
+  '}'
+].join('\n');
+function makeSlabMaterial(cls){
+  return new THREE.ShaderMaterial({
+    uniforms: { uOrigin: { value: new THREE.Vector3() }, uGain: { value: cls.slabG }, uValve: { value: cls.valve } },
+    vertexShader: slabVS, fragmentShader: slabFS,
+    side: THREE.DoubleSide, depthTest: false, depthWrite: false, clipping: true,
+    clippingPlanes: slabFor(cls.slabW),
+    blending: THREE.CustomBlending, blendEquation: THREE.MaxEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor
+  });
+}
+
+// 断面用シーン（パーツごとにパリティ→塗り）
+parts.forEach(function(pt){
+  pt.parityScene = new THREE.Scene();
+  pt.parityScene.add(new THREE.Mesh(pt.geom, parityMat));
+});
+var slabScene = new THREE.Scene();
+var slabMats = [];
+parts.forEach(function(pt){
+  var m = makeSlabMaterial(pt.cls);
+  slabMats.push(m);
+  slabScene.add(new THREE.Mesh(pt.geom, m));
+});
+
+/* ---------- 4b. エコー質感シェーダー（ポストエフェクト） ---------- */
+var echoMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tSec:    { value: rtSec.texture },
+    uFrust:  { value: new THREE.Vector4() },
+    uD:      { value: 140 },
+    uHalf:   { value: SECTOR_HALF * DEG },
+    uGain:   { value: 1.0 },
+    uSpeckle:{ value: 1.0 },
+    uLines:  { value: 1.0 },
+    uSeed:   { value: 0.0 }
+  },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: [
+    (GLSL_HP ? 'precision highp float;' : 'precision mediump float;'),
+    'uniform sampler2D tSec; uniform vec4 uFrust; uniform float uD; uniform float uHalf;',
+    'uniform float uGain; uniform float uSpeckle; uniform float uLines; uniform float uSeed;',
+    'varying vec2 vUv;',
+    'float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }',
+    'float vnoise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); vec2 u = f*f*(3.0-2.0*f);',
+    '  return mix(mix(hash12(i), hash12(i+vec2(1.0,0.0)), u.x), mix(hash12(i+vec2(0.0,1.0)), hash12(i+vec2(1.0,1.0)), u.x), u.y); }',
+    'vec3 S(vec2 uv){ return texture2D(tSec, clamp(uv, vec2(0.0), vec2(1.0))).rgb; }',
+    'void main(){',
+    '  float x = mix(uFrust.x, uFrust.y, vUv.x);',
+    '  float y = mix(uFrust.z, uFrust.w, vUv.y);',
+    '  float r = length(vec2(x, y));',
+    '  float th = atan(x, -y);',
+    '  float mask = smoothstep(uHalf, uHalf - 0.01, abs(th)) * smoothstep(uD, uD - 1.2, r) * step(0.0, -y + 0.0001);',
+    '  if (mask <= 0.0){ gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }',
+    '  vec2 mm2uv = vec2(1.0 / (uFrust.y - uFrust.x), 1.0 / (uFrust.w - uFrust.z));',
+    '  vec2 rad = r > 1e-3 ? vec2(x, y) / r : vec2(0.0, -1.0);',
+    '  vec2 lat = vec2(-rad.y, rad.x);',
+    // 側方分解能（深いほどビーム幅が広い）＋ 軸方向分解能
+    '  float bw = 0.30 + r * 0.010;',
+    '  vec3 acc = vec3(0.0); float ws = 0.0;',
+    '  for (int i = -2; i <= 2; i++){ float fi = float(i); float w = exp(-fi*fi*0.45);',
+    '    acc += S(vUv + lat * (fi * bw) * mm2uv) * w; ws += w; }',
+    '  vec3 s = acc / ws;',
+    '  s = s * 0.7 + 0.15 * (S(vUv + rad * 0.35 * mm2uv) + S(vUv - rad * 0.35 * mm2uv));',
+    '  float tissue = s.r, bnd = s.g, valve = s.b;',
+    // ビームと直交する境界（深さ方向の勾配）を高輝度に
+    '  float ta = S(vUv - rad * 0.7 * mm2uv).r, tb = S(vUv + rad * 0.7 * mm2uv).r;',
+    '  float grad = abs(tb - ta);',
+    // スペックル（極座標：軸方向に細かく側方に長いセル）
+    '  vec2 sp = vec2(r / 0.30, (r * th) / (0.55 + r * 0.007));',
+    '  float n1 = vnoise(sp);',
+    '  float n2 = vnoise(sp * 1.37 + vec2(uSeed * 17.31, uSeed * 9.73));',
+    '  float n3 = hash12(floor(sp * 2.0) + vec2(uSeed * 31.7, uSeed * 3.1));',
+    '  float u = clamp(mix(mix(n1, n2, 0.45), n3, 0.25), 0.001, 0.999);',
+    '  float speck = -log(1.0 - u) * 1.15;',
+    '  float sp2 = mix(1.0, speck, uSpeckle);',
+    '  float blood = 0.022 + 0.018 * hash12(floor(sp * 0.7) + vec2(uSeed * 5.0, 1.0));',
+    '  float e = blood + tissue * 0.50 + bnd * 0.62 + valve * 0.28 + grad * 0.55;',
+    '  e *= sp2;',
+    // 近距離：食道壁・プローブ接触面
+    '  e += (0.55 * exp(-r / 2.2) + 0.12 * exp(-r / 7.0)) * mix(1.0, speck, 0.6 * uSpeckle);',
+    // 距離減衰（一部TGCで補償）
+    '  e *= exp(-0.0105 * r) * (1.0 + 0.0042 * r);',
+    '  e *= uGain;',
+    // 対数圧縮
+    '  float v = log(1.0 + 10.0 * e) / log(11.0);',
+    '  v = pow(clamp(v, 0.0, 1.0), 1.12);',
+    // 放射状スキャンライン
+    '  float lineStep = (2.0 * uHalf) / 128.0;',
+    '  float lph = abs(fract(th / lineStep) - 0.5) * 2.0;',
+    '  v *= mix(1.0, 0.86 + 0.14 * smoothstep(0.08, 0.55, lph), uLines);',
+    // 扇の左右端のフォールオフ
+    '  v *= mix(0.72, 1.0, smoothstep(uHalf, uHalf * 0.62, abs(th)));',
+    '  vec3 col = vec3(v) * vec3(1.0, 0.985, 0.95);',
+    '  gl_FragColor = vec4(col * mask, 1.0);',
+    '}'
+  ].join('\n'),
+  depthTest: false, depthWrite: false
+});
+var echoScene = new THREE.Scene();
+echoScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), echoMat));
+
+var dispMat = new THREE.ShaderMaterial({
+  uniforms: { tMap: { value: rtEcho.texture } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform sampler2D tMap; varying vec2 vUv; void main(){ gl_FragColor = texture2D(tMap, vUv); }',
+  depthTest: false, depthWrite: false
+});
+var dispScene = new THREE.Scene();
+dispScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), dispMat));
+
+/* ---------- 4c. 3D 解剖ビュー ---------- */
+var scene3D = new THREE.Scene();
+scene3D.background = new THREE.Color(0x0e1319);
+var cam3D = new THREE.PerspectiveCamera(38, 1, 1, 3000);
+cam3D.up.set(0, 0, 1);
+cam3D.position.set(-150, -330, 150);
+var view3dEl = document.getElementById('view3d');
+var controls = null;
+if (typeof THREE.OrbitControls === 'function'){
+  try {
+    controls = new THREE.OrbitControls(cam3D, view3dEl);
+    controls.target.set(18, -10, 30);
+    controls.enableDamping = true; controls.dampingFactor = 0.12;
+    controls.minDistance = 60; controls.maxDistance = 1200;
+    controls.update();
+  } catch (e) { console.warn('OrbitControls init failed', e); controls = null; }
+}
+if (!controls) cam3D.lookAt(18, -10, 30);
+
+scene3D.add(new THREE.AmbientLight(0xffffff, 0.45));
+var dl1 = new THREE.DirectionalLight(0xffffff, 0.75); dl1.position.set(-200, -300, 400); scene3D.add(dl1);
+var dl2 = new THREE.DirectionalLight(0x99bbff, 0.35); dl2.position.set(300, 200, -100); scene3D.add(dl2);
+
+var heartMats = [];
+var ghostMeshes = [];
+var clip3DGhost = new THREE.Plane(new THREE.Vector3(0,0,1), 1e6);
+parts.forEach(function(pt){
+  var m = new THREE.MeshPhongMaterial({
+    color: pt.color, transparent: true, opacity: pt.cls.kind === 'valve' ? 0.95 : Math.min(0.85, pt.alpha + 0.1),
+    side: THREE.DoubleSide, depthWrite: pt.cls.kind === 'valve', shininess: 30,
+    clippingPlanes: [clip3D], clipShadows: false
+  });
+  heartMats.push(m);
+  var mesh = new THREE.Mesh(pt.geom, m);
+  mesh.renderOrder = pt.cls.kind === 'valve' ? 1 : 2;
+  scene3D.add(mesh);
+  // カットで除去された側を「輪郭ゴースト」として表示（視線と接する縁ほど濃いリムライト）
+  var gm = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: pt.color.clone().lerp(new THREE.Color(0xffffff), 0.35) },
+                uRim: { value: pt.cls.kind === 'valve' ? 0.0 : 0.75 }, uBase: { value: pt.cls.kind === 'valve' ? 0.0 : 0.035 } },
+    vertexShader: [
+      '#include <clipping_planes_pars_vertex>',
+      'varying vec3 vN; varying vec3 vV;',
+      'void main(){',
+      '  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);',
+      '  vN = normalize(normalMatrix * normal); vV = normalize(-mvPosition.xyz);',
+      '  gl_Position = projectionMatrix * mvPosition;',
+      '  #include <clipping_planes_vertex>',
+      '}'].join('\n'),
+    fragmentShader: [
+      '#include <clipping_planes_pars_fragment>',
+      'uniform vec3 uColor; uniform float uRim; uniform float uBase;',
+      'varying vec3 vN; varying vec3 vV;',
+      'void main(){',
+      '  #include <clipping_planes_fragment>',
+      '  float d = abs(dot(normalize(vN), normalize(vV)));',
+      '  float rim = pow(1.0 - d, 3.0);',
+      '  float a = uBase + uRim * rim;',
+      '  if (a < 0.01) discard;',
+      '  gl_FragColor = vec4(uColor, a);',
+      '}'].join('\n'),
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, clipping: true,
+    clippingPlanes: [clip3DGhost]
+  });
+  var gmesh = new THREE.Mesh(pt.geom, gm);
+  gmesh.renderOrder = 7;
+  ghostMeshes.push(gmesh);
+  scene3D.add(gmesh);
+});
+
+// 食道・胃（参考表示）
+(function(){
+  var tube = new THREE.TubeGeometry(probe.curve, 220, 8.5, 14, false);
+  var m = new THREE.MeshPhongMaterial({ color: 0xd9a07a, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
+  var mesh = new THREE.Mesh(tube, m); mesh.renderOrder = 3; scene3D.add(mesh);
+  var st = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18),
+    new THREE.MeshPhongMaterial({ color: 0xe0b48c, transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide }));
+  st.scale.set(42, 34, 30); st.position.set(36, -6, -66); st.renderOrder = 3; scene3D.add(st);
+  // 横隔膜の目安（薄い円盤）
+  var dia = new THREE.Mesh(new THREE.CircleGeometry(95, 48),
+    new THREE.MeshBasicMaterial({ color: 0x8899aa, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide }));
+  dia.position.set(15, -20, -12); dia.renderOrder = 3; scene3D.add(dia);
+})();
+
+// プローブ
+var probeMat = new THREE.MeshPhongMaterial({ color: 0x2b2f36, shininess: 60, specular: 0x555555 });
+var probeTipMat = new THREE.MeshPhongMaterial({ color: 0x3a4250, shininess: 80, specular: 0x777777 });
+var windowMat = new THREE.MeshPhongMaterial({ color: 0x4fd1c5, emissive: 0x123c38, shininess: 80 });
+var probeShaft = new THREE.Mesh(new THREE.BufferGeometry(), probeMat);
+scene3D.add(probeShaft);
+var tipGroup = new THREE.Group(); tipGroup.matrixAutoUpdate = false;
+(function(){
+  var housing = new THREE.Mesh(new THREE.BoxGeometry(12, 26, 10), probeTipMat); // x:左右, y:長軸(後方), z:厚み
+  housing.position.set(0, 9, -1);
+  var win = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 1.2, 24), windowMat);
+  win.rotation.x = Math.PI / 2; win.position.set(0, 0, 4.4);
+  tipGroup.add(housing); tipGroup.add(win);
+})();
+scene3D.add(tipGroup);
+
+// ビーム扇（エコー像をテクスチャとして貼る）
+var fanGroup = new THREE.Group(); fanGroup.matrixAutoUpdate = false;
+var fanMat = new THREE.MeshBasicMaterial({ map: rtEcho.texture, side: THREE.DoubleSide, transparent: true, opacity: 0.94, depthWrite: true });
+var fanMesh = new THREE.Mesh(new THREE.BufferGeometry(), fanMat); fanMesh.renderOrder = 5;
+var fanEdgeMat = new THREE.LineBasicMaterial({ color: 0x4fd1c5, transparent: true, opacity: 0.85 });
+var fanEdge = new THREE.Line(new THREE.BufferGeometry(), fanEdgeMat); fanEdge.renderOrder = 6;
+fanGroup.add(fanMesh); fanGroup.add(fanEdge);
+scene3D.add(fanGroup);
+var fanBuiltFor = -1;
+function buildFan(D){
+  if (fanBuiltFor === D) return;
+  fanBuiltFor = D;
+  var segs = 64, half = SECTOR_HALF * DEG, pos = [0, 0, 0], uv = [], idx = [], edge = [0, 0, 0];
+  var fl = FR.L * D, fr = FR.R * D, fb = FR.B * D, ft = FR.T * D;
+  function toUV(x, y){ return [(x - fl) / (fr - fl), (y - fb) / (ft - fb)]; }
+  uv.push.apply(uv, toUV(0, 0));
+  for (var i = 0; i <= segs; i++){
+    var a = -half + 2 * half * i / segs, x = D * Math.sin(a), y = -D * Math.cos(a);
+    pos.push(x, y, 0); uv.push.apply(uv, toUV(x, y)); edge.push(x, y, 0);
+    if (i > 0) idx.push(0, i, i + 1);
+  }
+  edge.push(0, 0, 0);
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  fanMesh.geometry.dispose(); fanMesh.geometry = g;
+  var ge = new THREE.BufferGeometry(); ge.setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
+  fanEdge.geometry.dispose(); fanEdge.geometry = ge;
+}
+
+/* ======================================================================
+   5. 姿勢の適用
+   ====================================================================== */
+var curPose = null;
+var basisM = new THREE.Matrix4();
+var tmpV = new THREE.Vector3();
+
+function applyPose(){
+  var P = probe.pose(state);
+  if (!P || !isFinite(P.origin.x) || !isFinite(P.normal.x)) return;
+  curPose = P;
+  var D = settings.range;
+  var nB = P.beam.clone().negate();
+  // 断面カメラ：X=画面右(lat), Y=上(-beam), Z=走査面法線
+  secCam.left = FR.L * D; secCam.right = FR.R * D; secCam.bottom = FR.B * D; secCam.top = FR.T * D;
+  secCam.updateProjectionMatrix();
+  secCam.matrix.makeBasis(P.lat, nB, P.normal).setPosition(P.origin);
+  secCam.matrixWorldNeedsUpdate = true;
+  secCam.updateMatrixWorld(true);
+
+  var c = P.normal.dot(P.origin);
+  clipBack.normal.copy(P.normal).negate(); clipBack.constant = c;            // 奥側(n·(p-O) <= 0)を残す
+  Object.keys(slabPlanes).forEach(function(k){
+    var sp = slabPlanes[k], w = sp.w;
+    sp.planes[0].normal.copy(P.normal); sp.planes[0].constant = -c + w;       // n·(p-O) >= -w
+    sp.planes[1].normal.copy(P.normal).negate(); sp.planes[1].constant = c + w; // n·(p-O) <=  w
+  });
+  slabMats.forEach(function(m){ m.uniforms.uOrigin.value.copy(P.origin); });
+  if (settings.cut){ clip3D.normal.copy(P.normal).negate(); clip3D.constant = c; }
+  else { clip3D.normal.set(0, 0, 1); clip3D.constant = 1e6; }
+  clip3DGhost.normal.copy(P.normal); clip3DGhost.constant = -c;              // 除去側（n·(p-O) >= 0）だけ
+  var showGhost = settings.cut && settings.ghost;
+  for (var gi = 0; gi < ghostMeshes.length; gi++) ghostMeshes[gi].visible = showGhost;
+
+  echoMat.uniforms.uFrust.value.set(FR.L * D, FR.R * D, FR.B * D, FR.T * D);
+  echoMat.uniforms.uD.value = D;
+
+  // 3D: 扇
+  buildFan(D);
+  fanGroup.matrix.makeBasis(P.lat, nB, P.normal).setPosition(P.origin);
+  fanGroup.matrixWorldNeedsUpdate = true;
+  fanGroup.visible = settings.fan;
+
+  // 3D: プローブ先端（x=左右(lat0), y=後方(-tip), z=ビーム）
+  var back = P.tip.clone().negate();
+  var side = new THREE.Vector3().crossVectors(back, P.beam).normalize();
+  tipGroup.matrix.makeBasis(side, back, P.beam).setPosition(P.origin);
+  tipGroup.matrixWorldNeedsUpdate = true;
+
+  // 3D: シャフト
+  try {
+    var pts = probe.probeCenterline(state);
+    var crv = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    var g = new THREE.TubeGeometry(crv, Math.max(16, pts.length * 2), 4.6, 10, false);
+    probeShaft.geometry.dispose(); probeShaft.geometry = g;
+  } catch (e) { /* 形状生成失敗時は前回のまま */ }
+}
+
+/* ======================================================================
+   6. 描画
+   ====================================================================== */
+function renderSection(){
+  renderer.setRenderTarget(rtSec);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, SEC_W, SEC_H);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear(true, true, true);
+  for (var i = 0; i < parts.length; i++){
+    var pt = parts[i];
+    if (pt.cls.fill <= 0) continue;
+    renderer.clear(false, false, true);
+    renderer.render(pt.parityScene, secCam);                 // 偶奇ステンシル
+    fillMat.color.setRGB(pt.cls.fill, 0, 0);
+    renderer.render(fillScene, quadCam);                     // 内部を塗る（R=組織輝度）
+  }
+  renderer.render(slabScene, secCam);                        // 境界線（G=反射, B=弁）
+  renderer.setRenderTarget(null);
+}
+function renderEcho(){
+  renderer.setRenderTarget(rtEcho);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, SEC_W, SEC_H);
+  renderer.render(echoScene, quadCam);
+  renderer.setRenderTarget(null);
+}
+function elemRect(el){
+  var r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height, bottom: r.bottom, right: r.right };
+}
+function visible(r){ return r.w > 2 && r.h > 2 && r.bottom > 0 && r.y < window.innerHeight && r.right > 0 && r.x < window.innerWidth; }
+var echoEl = document.getElementById('viewEcho');
+var echoAspect = SEC_W / SEC_H;
+function echoImageRect(){
+  var r = elemRect(echoEl);
+  var pad = 6, top = 46, bottom = 26;
+  var aw = Math.max(10, r.w - pad * 2), ah = Math.max(10, r.h - top - bottom);
+  var w = aw, h = w / echoAspect;
+  if (h > ah){ h = ah; w = h * echoAspect; }
+  return { r: r, x: r.x + (r.w - w) / 2, y: r.y + top + (ah - h) / 2, w: w, h: h };
+}
+function renderViews(){
+  var H = window.innerHeight;
+  renderer.setRenderTarget(null);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, window.innerWidth, H);
+  renderer.setClearColor(0x0b0e12, 1);
+  renderer.clear(true, true, true);
+  renderer.setScissorTest(true);
+
+  var r3 = elemRect(view3dEl);
+  if (visible(r3)){
+    renderer.setViewport(r3.x, H - r3.bottom, r3.w, r3.h);
+    renderer.setScissor(r3.x, H - r3.bottom, r3.w, r3.h);
+    renderer.setClearColor(0x0e1319, 1); renderer.clear(true, true, true);
+    cam3D.aspect = r3.w / r3.h; cam3D.updateProjectionMatrix();
+    renderer.render(scene3D, cam3D);
+  }
+  var ei = echoImageRect();
+  if (visible(ei.r)){
+    renderer.setViewport(ei.r.x, H - ei.r.bottom, ei.r.w, ei.r.h);
+    renderer.setScissor(ei.r.x, H - ei.r.bottom, ei.r.w, ei.r.h);
+    renderer.setClearColor(0x000000, 1); renderer.clear(true, true, true);
+    var yb = H - (ei.y + ei.h);
+    renderer.setViewport(ei.x, yb, ei.w, ei.h);
+    renderer.setScissor(ei.x, yb, ei.w, ei.h);
+    renderer.render(dispScene, quadCam);
+  }
+  renderer.setScissorTest(false);
+}
+
+/* ---------- エコー画面オーバーレイ（目盛・角度アイコン・ラベル） ---------- */
+var ov = document.getElementById('echoOverlay');
+var ovx = ov.getContext('2d');
+function nearestPreset(){
+  var best = null, bd = 1e9;
+  PRESETS.forEach(function(p){
+    var s = p.s;
+    var dr = Math.abs(((state.rot - s.rot + 540) % 360) - 180);
+    var d = Math.abs(state.depth - s.depth) / 14 + dr / 14 + Math.abs(state.ante - s.ante) / 14 + Math.abs(state.lr - s.lr) / 12 + Math.abs(state.omni - s.omni) / 12;
+    if (d < bd){ bd = d; best = p; }
+  });
+  return bd < 1.6 ? { p: best, d: bd } : null;
+}
+function drawOverlay(){
+  var ei = echoImageRect(), r = ei.r;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var W = Math.max(1, Math.round(r.w * dpr)), Hh = Math.max(1, Math.round(r.h * dpr));
+  if (ov.width !== W || ov.height !== Hh){ ov.width = W; ov.height = Hh; }
+  ovx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ovx.clearRect(0, 0, r.w, r.h);
+  var ox = ei.x - r.x, oy = ei.y - r.y, D = settings.range;
+  var sx = ei.w / ((FR.R - FR.L) * D), sy = ei.h / ((FR.T - FR.B) * D);
+  function P(x, y){ return [ox + (x - FR.L * D) * sx, oy + (FR.T * D - y) * sy]; }
+
+  ovx.font = '600 12px system-ui, sans-serif';
+  ovx.fillStyle = '#cfe8e5'; ovx.textBaseline = 'top';
+  ovx.fillText('TEE  5.0 MHz   ' + (D / 10).toFixed(0) + ' cm   G ' + Math.round(settings.gain * 50), 10, 8);
+  ovx.font = '11px system-ui, sans-serif';
+  ovx.fillStyle = '#7f8c99';
+  ovx.fillText(depthRegion(state.depth) + '  門歯から ' + incisorCm(state.depth).toFixed(1) + ' cm', 10, 25);
+
+  // オムニプレーン角アイコン（右上）
+  var cx = r.w - 40, cy = 34, R = 20;
+  ovx.strokeStyle = '#4b5a68'; ovx.lineWidth = 1.5;
+  ovx.beginPath(); ovx.arc(cx, cy, R, 0, Math.PI * 2); ovx.stroke();
+  var a = (state.omni - 90) * DEG; // 0°=左向き水平 → 回転
+  ovx.strokeStyle = '#4fd1c5'; ovx.lineWidth = 2.5;
+  ovx.beginPath();
+  ovx.moveTo(cx - Math.cos(state.omni * DEG) * R, cy - Math.sin(state.omni * DEG) * R);
+  ovx.lineTo(cx + Math.cos(state.omni * DEG) * R, cy + Math.sin(state.omni * DEG) * R);
+  ovx.stroke();
+  ovx.fillStyle = '#4fd1c5'; ovx.beginPath(); ovx.arc(cx + Math.cos(state.omni * DEG) * R, cy + Math.sin(state.omni * DEG) * R, 3, 0, Math.PI * 2); ovx.fill();
+  ovx.font = '700 14px system-ui, sans-serif'; ovx.textAlign = 'right'; ovx.fillStyle = '#e6fffb';
+  ovx.fillText(Math.round(state.omni) + '°', cx - R - 8, cy - 8);
+  ovx.textAlign = 'left';
+
+  // 深度目盛（右側）
+  var xr = P(FR.R * D * 0.93, 0)[0];
+  ovx.strokeStyle = '#6f7d8a'; ovx.fillStyle = '#8fa0ae'; ovx.lineWidth = 1; ovx.font = '10px system-ui, sans-serif';
+  for (var d = 0; d <= D + 0.1; d += 10){
+    var yy = P(0, -d)[1], big = (d % 50) === 0;
+    ovx.beginPath(); ovx.moveTo(xr, yy); ovx.lineTo(xr + (big ? 9 : 5), yy); ovx.stroke();
+    if (big){ ovx.fillText(String(d / 10), xr + 11, yy - 5); }
+  }
+  // 中心線上の 1cm ドット
+  ovx.fillStyle = 'rgba(160,190,200,.55)';
+  for (var dd = 10; dd < D; dd += 10){ var q = P(0, -dd); ovx.fillRect(q[0] - 1, q[1] - 1, 2, 2); }
+  // 向きマーカー（扇頂点の左上：画面右＝0°で患者左）
+  var ap = P(-D * 0.10, -1);
+  ovx.fillStyle = '#f6ad55'; ovx.beginPath(); ovx.arc(ap[0], ap[1], 3.5, 0, Math.PI * 2); ovx.fill();
+
+  // 解剖ラベル
+  if (settings.labels && curPose){
+    ovx.font = '600 11px system-ui, sans-serif';
+    LM.forEach(function(o){
+      tmpV.copy(o.p).sub(curPose.origin);
+      var z = tmpV.dot(curPose.normal), yv = tmpV.dot(curPose.beam), xv = tmpV.dot(curPose.lat);
+      if (Math.abs(z) > o.tol || yv < 6 || yv > D - 4) return;
+      if (Math.abs(Math.atan2(xv, yv)) > (SECTOR_HALF - 3) * DEG) return;
+      var q = P(xv, -yv);
+      var alpha = 1 - Math.abs(z) / o.tol * 0.6;
+      ovx.fillStyle = 'rgba(246,173,85,' + alpha.toFixed(2) + ')';
+      ovx.fillText(o.t, q[0] - ovx.measureText(o.t).width / 2, q[1] - 6);
+    });
+  }
+  // 近い標準断面
+  var np = nearestPreset();
+  ovx.font = '600 12px system-ui, sans-serif'; ovx.textBaseline = 'bottom';
+  ovx.fillStyle = np ? '#4fd1c5' : '#5d6b78';
+  ovx.fillText(np ? ('≈ ' + np.p.name + '（' + np.p.ja + '）') : '標準断面から外れています', 10, r.h - 8);
+  ovx.textBaseline = 'top';
+}
+
+/* ======================================================================
+   7. 操作部 UI（SVG：大小2連ダイヤル・オムニ・シャフト）
+   ====================================================================== */
+var SVGNS = 'http://www.w3.org/2000/svg';
+var svg = document.getElementById('handleSvg');
+function el(tag, attrs, parent){
+  var e = document.createElementNS(SVGNS, tag);
+  if (attrs) for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+var DC = { x: 150, y: 142 };          // ダイヤル中心
+var R_SMALL = 58, R_BIG_IN = 66, R_BIG_OUT = 108;
+var OM = { x: 150, y: 322, r: 42 };   // オムニゲージ
+var GRIP = { x: 88, y: 386, w: 124, h: 146 };
+var ui = {};
+(function buildSvg(){
+  var defs = el('defs', null, svg);
+  var lg = el('linearGradient', { id: 'gBody', x1: '0', y1: '0', x2: '1', y2: '0' }, defs);
+  el('stop', { offset: '0', 'stop-color': '#1d232b' }, lg); el('stop', { offset: '.5', 'stop-color': '#2c343f' }, lg); el('stop', { offset: '1', 'stop-color': '#1a1f26' }, lg);
+  var rg = el('radialGradient', { id: 'gBig', cx: '.45', cy: '.4', r: '.65' }, defs);
+  el('stop', { offset: '0', 'stop-color': '#3a4552' }, rg); el('stop', { offset: '1', 'stop-color': '#20272f' }, rg);
+  var rg2 = el('radialGradient', { id: 'gSmall', cx: '.45', cy: '.4', r: '.7' }, defs);
+  el('stop', { offset: '0', 'stop-color': '#55606d' }, rg2); el('stop', { offset: '1', 'stop-color': '#2b333d' }, rg2);
+
+  // ハンドル本体シルエット
+  el('path', { d: 'M150,20 C230,20 262,80 262,142 C262,205 232,240 214,262 L214,534 C214,546 205,550 196,550 L104,550 C95,550 86,546 86,534 L86,262 C68,240 38,205 38,142 C38,80 70,20 150,20 Z',
+    fill: 'url(#gBody)', stroke: '#394451', 'stroke-width': 1.5 }, svg);
+
+  // 大ダイヤル（外輪）
+  ui.bigG = el('g', null, svg);
+  el('circle', { cx: DC.x, cy: DC.y, r: R_BIG_OUT, fill: 'url(#gBig)', stroke: '#56636f', 'stroke-width': 1.5 }, ui.bigG);
+  ui.bigTeeth = el('g', null, ui.bigG);
+  for (var i = 0; i < 18; i++){
+    var a = i / 18 * Math.PI * 2;
+    el('path', { d: 'M' + (DC.x + Math.cos(a) * (R_BIG_OUT - 2)) + ',' + (DC.y + Math.sin(a) * (R_BIG_OUT - 2)) +
+      ' L' + (DC.x + Math.cos(a) * (R_BIG_IN + 8)) + ',' + (DC.y + Math.sin(a) * (R_BIG_IN + 8)),
+      stroke: '#181e25', 'stroke-width': 9, 'stroke-linecap': 'round', opacity: .55 }, ui.bigTeeth);
+  }
+  el('circle', { cx: DC.x + R_BIG_OUT - 14, cy: DC.y, r: 6, fill: '#f6ad55' }, ui.bigTeeth);
+  el('circle', { cx: DC.x, cy: DC.y, r: R_BIG_IN, fill: '#141a20', stroke: '#2e3842' }, ui.bigG);
+  // 小ダイヤル（内輪）
+  ui.smallG = el('g', null, svg);
+  el('circle', { cx: DC.x, cy: DC.y, r: R_SMALL, fill: 'url(#gSmall)', stroke: '#6b7784', 'stroke-width': 1.2 }, ui.smallG);
+  ui.smallTeeth = el('g', null, ui.smallG);
+  for (var j = 0; j < 10; j++){
+    var b = j / 10 * Math.PI * 2;
+    el('path', { d: 'M' + (DC.x + Math.cos(b) * (R_SMALL - 3)) + ',' + (DC.y + Math.sin(b) * (R_SMALL - 3)) +
+      ' L' + (DC.x + Math.cos(b) * 32) + ',' + (DC.y + Math.sin(b) * 32),
+      stroke: '#262d36', 'stroke-width': 8, 'stroke-linecap': 'round', opacity: .7 }, ui.smallTeeth);
+  }
+  el('circle', { cx: DC.x, cy: DC.y - R_SMALL + 12, r: 5, fill: '#4fd1c5' }, ui.smallTeeth);
+  el('circle', { cx: DC.x, cy: DC.y, r: 22, fill: '#1c232b', stroke: '#4a5561' }, ui.smallG);
+  ui.lrText = el('text', { x: DC.x, y: DC.y + 4, 'text-anchor': 'middle', fill: '#bfeee9', 'font-size': 11, 'font-weight': 700 }, ui.smallG);
+  // ラベル
+  var lab = { fill: '#8a97a5', 'font-size': 10.5, 'text-anchor': 'middle' };
+  ui.bigLabel = el('text', Object.assign({ x: DC.x, y: 30 + 2 }, lab), svg);
+  ui.smallLabel = el('text', Object.assign({ x: DC.x, y: DC.y + R_BIG_OUT + 14 }, lab), svg);
+  // 親指位置の目印：この縁を上（シャフトから離す）へ＝前屈、下（シャフト側）へ＝後屈
+  ui.thumbG = el('g', { 'pointer-events': 'none' }, svg);
+  ui.thumbUp = el('text', { y: DC.y - 30, fill: '#f6ad55', 'font-size': 10 }, ui.thumbG); ui.thumbUp.textContent = '↑前屈';
+  ui.thumbDn = el('text', { y: DC.y + 38, fill: '#8a97a5', 'font-size': 10 }, ui.thumbG); ui.thumbDn.textContent = '↓後屈';
+  ui.anteText = el('text', { x: DC.x + 86, y: DC.y - 82, 'text-anchor': 'middle', fill: '#f6ad55', 'font-size': 11, 'font-weight': 700 }, svg);
+
+  // オムニプレーン
+  el('path', { d: 'M' + (OM.x - OM.r) + ',' + OM.y + ' A' + OM.r + ',' + OM.r + ' 0 0 1 ' + (OM.x + OM.r) + ',' + OM.y, fill: 'none', stroke: '#3b4753', 'stroke-width': 9, 'stroke-linecap': 'round' }, svg);
+  ui.omArc = el('path', { d: '', fill: 'none', stroke: '#4fd1c5', 'stroke-width': 9, 'stroke-linecap': 'round' }, svg);
+  for (var k = 0; k <= 180; k += 30){
+    var aa = Math.PI + k * DEG;
+    el('line', { x1: OM.x + Math.cos(aa) * (OM.r + 7), y1: OM.y + Math.sin(aa) * (OM.r + 7), x2: OM.x + Math.cos(aa) * (OM.r + 12), y2: OM.y + Math.sin(aa) * (OM.r + 12), stroke: '#6b7784', 'stroke-width': 1.2 }, svg);
+  }
+  ui.omNeedle = el('line', { x1: OM.x, y1: OM.y, x2: OM.x - OM.r, y2: OM.y, stroke: '#e6fffb', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, svg);
+  el('circle', { cx: OM.x, cy: OM.y, r: 4, fill: '#e6fffb' }, svg);
+  ui.omText = el('text', { x: OM.x, y: OM.y + 20, 'text-anchor': 'middle', fill: '#e6fffb', 'font-size': 15, 'font-weight': 700 }, svg);
+  el('text', { x: OM.x, y: OM.y + 34, 'text-anchor': 'middle', fill: '#8a97a5', 'font-size': 10 }, svg).textContent = 'OMNIPLANE';
+  ui.omHit = el('path', { d: 'M' + (OM.x - OM.r - 16) + ',' + (OM.y + 4) + ' A' + (OM.r + 16) + ',' + (OM.r + 16) + ' 0 0 1 ' + (OM.x + OM.r + 16) + ',' + (OM.y + 4) + ' Z', fill: 'transparent', style: 'cursor:pointer' }, svg);
+  function omBtn(x, label){
+    var g = el('g', { style: 'cursor:pointer' }, svg);
+    el('circle', { cx: x, cy: OM.y - 6, r: 19, fill: '#222a33', stroke: '#4fd1c5', 'stroke-width': 1.4 }, g);
+    var t = el('text', { x: x, y: OM.y + 0.5, 'text-anchor': 'middle', fill: '#bff5ef', 'font-size': 20, 'font-weight': 700 }, g);
+    t.textContent = label;
+    return g;
+  }
+  ui.omMinus = omBtn(OM.x - 98, '−');
+  ui.omPlus = omBtn(OM.x + 98, '+');
+
+  // グリップ（シャフト操作エリア）
+  ui.grip = el('g', { style: 'cursor:grab' }, svg);
+  el('rect', { x: GRIP.x, y: GRIP.y, width: GRIP.w, height: GRIP.h, rx: 14, fill: '#1b2128', stroke: '#3a4652', 'stroke-width': 1.2 }, ui.grip);
+  ui.ribs = el('g', null, ui.grip);
+  for (var m = 0; m < 9; m++){
+    el('line', { x1: GRIP.x + 14, x2: GRIP.x + GRIP.w - 14, y1: 0, y2: 0, stroke: '#2a333d', 'stroke-width': 4, 'stroke-linecap': 'round' }, ui.ribs);
+  }
+  el('text', { x: 150, y: GRIP.y + 24, 'text-anchor': 'middle', fill: '#8a97a5', 'font-size': 10.5 }, ui.grip).textContent = '↑ 引き抜き';
+  el('text', { x: 150, y: GRIP.y + GRIP.h - 14, 'text-anchor': 'middle', fill: '#8a97a5', 'font-size': 10.5 }, ui.grip).textContent = '↓ 挿入';
+  el('text', { x: GRIP.x + 6, y: GRIP.y + GRIP.h / 2 + 4, 'text-anchor': 'start', fill: '#8a97a5', 'font-size': 10 }, ui.grip).textContent = '↺';
+  el('text', { x: GRIP.x + GRIP.w - 6, y: GRIP.y + GRIP.h / 2 + 4, 'text-anchor': 'end', fill: '#8a97a5', 'font-size': 10 }, ui.grip).textContent = '↻';
+  ui.gripMark = el('rect', { x: 146, y: GRIP.y + 40, width: 8, height: GRIP.h - 80, rx: 4, fill: '#f6ad55', opacity: .85 }, ui.grip);
+  ui.depthBarBg = el('rect', { x: GRIP.x + GRIP.w + 12, y: GRIP.y, width: 6, height: GRIP.h, rx: 3, fill: '#222a33' }, svg);
+  ui.depthBar = el('rect', { x: GRIP.x + GRIP.w + 12, y: GRIP.y, width: 6, height: 10, rx: 3, fill: '#4fd1c5' }, svg);
+  el('text', { x: GRIP.x + GRIP.w + 24, y: GRIP.y + 8, fill: '#6b7784', 'font-size': 9 }, svg).textContent = 'UE';
+  el('text', { x: GRIP.x + GRIP.w + 24, y: GRIP.y + GRIP.h, fill: '#6b7784', 'font-size': 9 }, svg).textContent = 'TG';
+  ui.rotText = el('text', { x: GRIP.x - 6, y: GRIP.y - 8, 'text-anchor': 'start', fill: '#f6ad55', 'font-size': 11, 'font-weight': 700 }, svg);
+})();
+
+function updateHandleUI(){
+  // ダイヤル回転角（値→見た目）
+  ui.bigLabel.textContent = settings.bigCW ? '大：前屈 ↻ / 後屈 ↺' : '大：前屈 ↺ / 後屈 ↻';
+  [ui.thumbUp, ui.thumbDn].forEach(function(t){ t.setAttribute('x', settings.bigCW ? (DC.x - R_BIG_OUT - 2) : (DC.x + R_BIG_OUT + 2)); t.setAttribute('text-anchor', settings.bigCW ? 'end' : 'start'); });
+  ui.smallLabel.textContent = settings.smallCW ? '小：右屈 ↻ / 左屈 ↺' : '小：右屈 ↺ / 左屈 ↻';
+  ui.bigTeeth.setAttribute('transform', 'rotate(' + (bigSign() * state.ante * 1.6).toFixed(2) + ' ' + DC.x + ' ' + DC.y + ')');
+  ui.smallTeeth.setAttribute('transform', 'rotate(' + (smallSign() * state.lr * 3.0).toFixed(2) + ' ' + DC.x + ' ' + DC.y + ')');
+  var a = state.ante;
+  ui.anteText.textContent = (a >= 0 ? 'ANTE ' : 'RETRO ') + Math.abs(a).toFixed(0) + '°';
+  ui.lrText.textContent = (Math.abs(state.lr) < 0.5 ? 'N' : (state.lr > 0 ? 'R' : 'L') + Math.abs(state.lr).toFixed(0));
+  // オムニ
+  var om = state.omni * DEG, ang = Math.PI + om;
+  ui.omNeedle.setAttribute('x2', (OM.x + Math.cos(ang) * (OM.r - 4)).toFixed(2));
+  ui.omNeedle.setAttribute('y2', (OM.y + Math.sin(ang) * (OM.r - 4)).toFixed(2));
+  var ex = OM.x + Math.cos(ang) * OM.r, ey = OM.y + Math.sin(ang) * OM.r;
+  ui.omArc.setAttribute('d', state.omni < 0.5 ? '' : ('M' + (OM.x - OM.r) + ',' + OM.y + ' A' + OM.r + ',' + OM.r + ' 0 0 1 ' + ex.toFixed(2) + ',' + ey.toFixed(2)));
+  ui.omText.textContent = Math.round(state.omni) + '°';
+  // グリップ：リブの流れ＝深度、マーカー横ずれ＝回転
+  var ph = (state.depth * 0.9) % 16;
+  var ribs = ui.ribs.childNodes;
+  for (var i = 0; i < ribs.length; i++){
+    var y = GRIP.y + 34 + ((i * 16 + ph) % (GRIP.h - 64));
+    ribs[i].setAttribute('y1', y.toFixed(1)); ribs[i].setAttribute('y2', y.toFixed(1));
+  }
+  var rr = clamp(state.rot / 180, -1, 1);
+  ui.gripMark.setAttribute('x', (146 + rr * (GRIP.w / 2 - 20)).toFixed(1));
+  ui.gripMark.setAttribute('width', (8 * (1 - 0.5 * Math.abs(rr))).toFixed(1));
+  var df = state.depth / LIMITS.depth[1];
+  ui.depthBar.setAttribute('height', Math.max(4, df * GRIP.h).toFixed(1));
+  ui.rotText.textContent = '回転 ' + (state.rot >= 0 ? '時計 ' : '反時計 ') + Math.abs(state.rot).toFixed(0) + '°';
+
+  // 数値表示
+  setText('roDepth', incisorCm(state.depth).toFixed(1) + ' cm');
+  setText('roRot', (Math.abs(state.rot) < 0.5 ? '0°' : (state.rot > 0 ? '時計 ' : '反時計 ') + Math.abs(state.rot).toFixed(0) + '°'));
+  setText('roAnte', (Math.abs(state.ante) < 0.5 ? 'ニュートラル' : (state.ante > 0 ? '前屈 ' : '後屈 ') + Math.abs(state.ante).toFixed(0) + '°'));
+  setText('roLR', (Math.abs(state.lr) < 0.5 ? 'ニュートラル' : (state.lr > 0 ? '右屈 ' : '左屈 ') + Math.abs(state.lr).toFixed(0) + '°'));
+  var np = nearestPreset();
+  setText('roOmni', Math.round(state.omni) + '°  ' + (np ? '≈ ' + np.p.name : '—'));
+  // スライダー同期
+  sliderDefs.forEach(function(sd){
+    if (!sd.input || document.activeElement === sd.input) return;
+    var v = sd.get(); sd.input.value = v; sd.out.textContent = sd.fmt(v);
+  });
+  // プリセットのハイライト
+  presetBtns.forEach(function(b){ b.el.classList.toggle('active', !!(np && np.p.id === b.id && np.d < 0.35)); });
+}
+function setText(id, t){ var e = document.getElementById(id); if (e && e.textContent !== t) e.textContent = t; }
+
+// ---- ポインタ操作 ----
+function svgPoint(evt){
+  var pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+  var m = svg.getScreenCTM();
+  if (!m) return { x: 0, y: 0 };
+  var p = pt.matrixTransform(m.inverse());
+  return { x: p.x, y: p.y };
+}
+var drag = null;
+function angDiff(a, b){ var d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+svg.addEventListener('pointerdown', function(evt){
+  var p = svgPoint(evt);
+  var dx = p.x - DC.x, dy = p.y - DC.y, rr = Math.hypot(dx, dy);
+  var target = null;
+  if (rr <= R_SMALL) target = 'small';
+  else if (rr <= R_BIG_OUT + 4) target = 'big';
+  else if (p.x >= GRIP.x && p.x <= GRIP.x + GRIP.w && p.y >= GRIP.y && p.y <= GRIP.y + GRIP.h) target = 'grip';
+  else if (Math.hypot(p.x - (OM.x - 98), p.y - (OM.y - 6)) < 22) target = 'omMinus';
+  else if (Math.hypot(p.x - (OM.x + 98), p.y - (OM.y - 6)) < 22) target = 'omPlus';
+  else if (Math.hypot(p.x - OM.x, p.y - OM.y) < OM.r + 18 && p.y < OM.y + 8) target = 'omGauge';
+  if (!target) return;
+  evt.preventDefault();
+  cancelTween();
+  try { svg.setPointerCapture(evt.pointerId); } catch (e) {}
+  drag = { target: target, id: evt.pointerId, last: p, lastA: Math.atan2(dy, dx) };
+  if (target === 'omMinus' || target === 'omPlus') startRepeat(target === 'omPlus' ? 1 : -1);
+  if (target === 'omGauge') setOmniFromPoint(p);
+  if (target === 'grip') ui.grip.style.cursor = 'grabbing';
+});
+svg.addEventListener('pointermove', function(evt){
+  if (!drag || evt.pointerId !== drag.id) return;
+  evt.preventDefault();
+  var p = svgPoint(evt);
+  if (drag.target === 'big' || drag.target === 'small'){
+    var a = Math.atan2(p.y - DC.y, p.x - DC.x), da = angDiff(a, drag.lastA) / DEG;
+    drag.lastA = a;
+    if (drag.target === 'big') setParam('ante', state.ante + bigSign() * da / 1.6);
+    else setParam('lr', state.lr + smallSign() * da / 3.0);
+  } else if (drag.target === 'grip'){
+    var ddx = p.x - drag.last.x, ddy = p.y - drag.last.y;
+    // 主に動いた軸を優先（誤操作防止）
+    if (Math.abs(ddy) >= Math.abs(ddx) * 0.6) setParam('depth', state.depth + ddy * 0.55);
+    if (Math.abs(ddx) >= Math.abs(ddy) * 0.6) setParam('rot', state.rot + ddx * 0.6);
+  } else if (drag.target === 'omGauge'){
+    setOmniFromPoint(p);
+  }
+  drag.last = p;
+});
+function endDrag(evt){
+  if (!drag || (evt && evt.pointerId !== drag.id)) return;
+  stopRepeat(); ui.grip.style.cursor = 'grab'; drag = null;
+}
+svg.addEventListener('pointerup', endDrag);
+svg.addEventListener('pointercancel', endDrag);
+svg.addEventListener('lostpointercapture', endDrag);
+svg.addEventListener('wheel', function(evt){
+  var p = svgPoint(evt), rr = Math.hypot(p.x - DC.x, p.y - DC.y), s = evt.deltaY > 0 ? -1 : 1;
+  var used = true;
+  if (rr <= R_SMALL) setParam('lr', state.lr + s * 1.5);
+  else if (rr <= R_BIG_OUT) setParam('ante', state.ante + s * 2);
+  else if (p.y > OM.y - OM.r - 30 && p.y < OM.y + 40) setParam('omni', state.omni + s * 2);
+  else if (p.y >= GRIP.y) setParam('depth', state.depth - s * 3);
+  else used = false;
+  if (used){ evt.preventDefault(); cancelTween(); }
+}, { passive: false });
+function setOmniFromPoint(p){
+  var a = Math.atan2(p.y - OM.y, p.x - OM.x); // -π..π, 上半分が負
+  var deg = (a + Math.PI) / DEG;               // 左=0, 上=90, 右=180
+  if (p.y > OM.y) deg = p.x < OM.x ? 0 : 180;
+  setParam('omni', Math.round(clamp(deg, 0, 180)));
+}
+var repeatTimer = null, repeatCount = 0;
+function startRepeat(dir){
+  stopRepeat(); repeatCount = 0;
+  setParam('omni', Math.round(state.omni) + dir);
+  repeatTimer = setInterval(function(){
+    repeatCount++;
+    if (repeatCount < 6) return;
+    setParam('omni', Math.round(state.omni) + dir * (repeatCount > 30 ? 3 : 1));
+  }, 45);
+}
+function stopRepeat(){ if (repeatTimer){ clearInterval(repeatTimer); repeatTimer = null; } }
+
+// キーボード
+window.addEventListener('keydown', function(evt){
+  var t = evt.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  var k = evt.key, used = true;
+  if (k === 'w' || k === 'W') setParam('depth', state.depth - 2);
+  else if (k === 's' || k === 'S') setParam('depth', state.depth + 2);
+  else if (k === 'a' || k === 'A') setParam('rot', state.rot - 2);
+  else if (k === 'd' || k === 'D') setParam('rot', state.rot + 2);
+  else if (k === 'ArrowUp') setParam('ante', state.ante + 2);
+  else if (k === 'ArrowDown') setParam('ante', state.ante - 2);
+  else if (k === 'ArrowLeft') setParam('lr', state.lr - 2);
+  else if (k === 'ArrowRight') setParam('lr', state.lr + 2);
+  else if (k === 'q' || k === 'Q') setParam('omni', state.omni - 2);
+  else if (k === 'e' || k === 'E') setParam('omni', state.omni + 2);
+  else used = false;
+  if (used){ evt.preventDefault(); cancelTween(); }
+});
+
+// 微調整スライダー
+var sliderDefs = [
+  { k: 'depth', label: '挿入深度', min: 0, max: LIMITS.depth[1], step: 0.5, get: function(){ return state.depth; }, set: function(v){ setParam('depth', v); }, fmt: function(v){ return incisorCm(+v).toFixed(1) + 'cm'; } },
+  { k: 'rot',   label: '主軸回転', min: -180, max: 180, step: 1, get: function(){ return state.rot; }, set: function(v){ setParam('rot', v); }, fmt: function(v){ return (+v).toFixed(0) + '°'; } },
+  { k: 'ante',  label: '前屈/後屈', min: LIMITS.ante[0], max: LIMITS.ante[1], step: 1, get: function(){ return state.ante; }, set: function(v){ setParam('ante', v); }, fmt: function(v){ return (+v).toFixed(0) + '°'; } },
+  { k: 'lr',    label: '左屈/右屈', min: -45, max: 45, step: 1, get: function(){ return state.lr; }, set: function(v){ setParam('lr', v); }, fmt: function(v){ return (+v).toFixed(0) + '°'; } },
+  { k: 'omni',  label: 'オムニ角', min: 0, max: 180, step: 1, get: function(){ return state.omni; }, set: function(v){ setParam('omni', v); }, fmt: function(v){ return (+v).toFixed(0) + '°'; } },
+  { k: 'range', label: '表示深度', min: 80, max: 180, step: 10, get: function(){ return settings.range; }, set: function(v){ settings.range = clamp(+v, 80, 180); dirty = true; overlayDirty = true; }, fmt: function(v){ return (+v / 10).toFixed(0) + 'cm'; } },
+  { k: 'gain',  label: 'ゲイン', min: 0.4, max: 2.0, step: 0.05, get: function(){ return settings.gain; }, set: function(v){ settings.gain = clamp(+v, 0.4, 2.0); overlayDirty = true; }, fmt: function(v){ return Math.round(+v * 50).toString(); } }
+];
+(function buildSliders(){
+  var host = document.getElementById('sliders');
+  sliderDefs.forEach(function(sd){
+    var row = document.createElement('div'); row.className = 'slider';
+    var lb = document.createElement('label'); lb.textContent = sd.label;
+    var inp = document.createElement('input'); inp.type = 'range'; inp.min = sd.min; inp.max = sd.max; inp.step = sd.step; inp.value = sd.get();
+    var out = document.createElement('span'); out.textContent = sd.fmt(sd.get());
+    inp.addEventListener('input', function(){ cancelTween(); sd.set(+inp.value); out.textContent = sd.fmt(+inp.value); });
+    row.appendChild(lb); row.appendChild(inp); row.appendChild(out); host.appendChild(row);
+    sd.input = inp; sd.out = out;
+  });
+})();
+function bindToggle(id, key, cb){
+  var e = document.getElementById(id);
+  if (!e) return;
+  e.checked = !!settings[key];
+  e.addEventListener('change', function(){ settings[key] = e.checked; dirty = true; overlayDirty = true; if (cb) cb(); });
+}
+bindToggle('tgBigCW', 'bigCW', function(){ lastStateKey = ''; });
+bindToggle('tgSmallCW', 'smallCW', function(){ lastStateKey = ''; });
+bindToggle('tgCut', 'cut'); bindToggle('tgGhost', 'ghost'); bindToggle('tgLabels', 'labels'); bindToggle('tgSpeckle', 'speckle'); bindToggle('tgLines', 'lines'); bindToggle('tgFan', 'fan');
+
+/* ---------- プリセット（ダイヤルが自動トゥイーン） ---------- */
+var tween = null;
+function cancelTween(){ tween = null; }
+function startTween(target){
+  var from = { depth: state.depth, rot: state.rot, ante: state.ante, lr: state.lr, omni: state.omni };
+  var to = { depth: target.depth, rot: target.rot, ante: target.ante, lr: target.lr, omni: target.omni };
+  var dRot = ((to.rot - from.rot + 540) % 360) - 180; to.rot = from.rot + dRot;
+  var span = Math.max(Math.abs(to.depth - from.depth) / 60, Math.abs(dRot) / 60, Math.abs(to.ante - from.ante) / 50, Math.abs(to.omni - from.omni) / 90, 0.5);
+  tween = { from: from, to: to, t0: performance.now(), dur: clamp(span * 900, 600, 1800) };
+}
+function stepTween(now){
+  if (!tween) return;
+  var u = clamp((now - tween.t0) / tween.dur, 0, 1);
+  var e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+  ['depth', 'rot', 'ante', 'lr', 'omni'].forEach(function(k){ setParam(k, tween.from[k] + (tween.to[k] - tween.from[k]) * e); });
+  if (state.rot > 180 || state.rot < -180) state.rot = ((state.rot + 540) % 360) - 180;
+  if (u >= 1) tween = null;
+}
+var presetBtns = [];
+(function buildPresets(){
+  var host = document.getElementById('presets');
+  PRESETS.forEach(function(p){
+    var b = document.createElement('button');
+    b.innerHTML = '';
+    b.appendChild(document.createTextNode(p.name));
+    var sp = document.createElement('span'); sp.className = 'ang'; sp.textContent = Math.round(p.s.omni) + '°'; b.appendChild(sp);
+    b.title = p.ja + '\n深度 ' + incisorCm(p.s.depth).toFixed(1) + 'cm / 回転 ' + p.s.rot + '° / 前後屈 ' + p.s.ante + '° / 左右屈 ' + p.s.lr + '° / ' + p.s.omni + '°';
+    b.addEventListener('click', function(){ startTween(p.s); });
+    host.appendChild(b);
+    presetBtns.push({ id: p.id, el: b });
+  });
+})();
+
+// 3Dカメラ視点ボタン
+Array.prototype.forEach.call(document.querySelectorAll('.vbtns button'), function(b){
+  b.addEventListener('click', function(){
+    var tgt = new THREE.Vector3(18, -10, 30), mode = b.getAttribute('data-cam');
+    var pos;
+    if (mode === 'front') pos = new THREE.Vector3(-60, -360, 90);
+    else if (mode === 'left') pos = new THREE.Vector3(360, -40, 60);
+    else if (mode === 'top') pos = new THREE.Vector3(10, -60, 400);
+    else if (mode === 'probe' && curPose){
+      tgt = curPose.origin.clone().addScaledVector(curPose.beam, settings.range * 0.45);
+      pos = tgt.clone().addScaledVector(curPose.normal, 260).addScaledVector(curPose.beam, -40);
+    } else return;
+    cam3D.position.copy(pos);
+    if (controls){ controls.target.copy(tgt); controls.update(); } else cam3D.lookAt(tgt);
+  });
+});
+
+/* ======================================================================
+   8. メインループ
+   ====================================================================== */
+var lastSeedT = 0, seed = 0, frameErrors = 0;
+var lastStateKey = '';
+function loop(now){
+  requestAnimationFrame(loop);
+  try {
+    stepTween(now);
+    if (dirty){ applyPose(); renderSection(); dirty = false; overlayDirty = true; }
+    if (now - lastSeedT > 33){ seed = (seed + 1) % 97; lastSeedT = now; }
+    echoMat.uniforms.uSeed.value = seed * 0.6180339 % 1 * 97.0;
+    echoMat.uniforms.uGain.value = settings.gain;
+    echoMat.uniforms.uSpeckle.value = settings.speckle ? 1 : 0;
+    echoMat.uniforms.uLines.value = settings.lines ? 1 : 0;
+    renderEcho();
+    if (controls) controls.update();
+    renderViews();
+    var key = state.depth.toFixed(2) + state.rot.toFixed(2) + state.ante.toFixed(2) + state.lr.toFixed(2) + state.omni.toFixed(2);
+    if (key !== lastStateKey){ lastStateKey = key; updateHandleUI(); }
+    if (overlayDirty){ drawOverlay(); overlayDirty = false; }
+  } catch (e) {
+    frameErrors++;
+    if (frameErrors < 4) console.error(e);
+    if (frameErrors === 30) showError('描画中にエラーが繰り返し発生しました：\n' + (e && e.message ? e.message : e));
+  }
+}
+window.addEventListener('scroll', function(){ overlayDirty = true; }, { passive: true });
+
+try {
+  applyPose(); renderSection(); dirty = false;
+  updateHandleUI();
+} catch (e) {
+  showError('初期化に失敗しました：\n' + (e && e.message ? e.message : e));
+  return;
+}
+if (loadingBox) loadingBox.style.display = 'none';
+requestAnimationFrame(loop);
+
+// デバッグ／テスト用フック
+window.TEESIM = { state: state, settings: settings, setParam: setParam, presets: PRESETS, goPreset: function(id){ var p = PRESETS.filter(function(x){ return x.id === id; })[0]; if (p){ cancelTween(); ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, p.s[k]); }); } } };
+})();
+</script>
+</body>
+</html>
