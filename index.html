@@ -157,7 +157,7 @@ var SECTOR_HALF = 45; // 扇の半角（度）
 var SEC_H = 512;
 var SEC_W = Math.round(SEC_H * (FR.R - FR.L) / (FR.T - FR.B));
 
-var state = { depth: 101.5, rot: -21.2, ante: -33.8, lr: 5.6, omni: 0 };
+var state = { depth: 102.2, rot: -24.2, ante: -32.2, lr: -4.2, omni: 5 };
 var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true, cut: true, fan: true, ghost: true,
   bigCW: true,    // true : 大ダイヤル時計回り（親指でシャフトから離す方向）＝前屈
   smallCW: true   // true : 小ダイヤル時計回り＝右屈
@@ -169,16 +169,19 @@ var overlayDirty = true; // オーバーレイ再描画フラグ
 
 // 標準断面プリセット（このBodyParts3Dモデル上でランドマーク最適化した値）
 var PRESETS = [
-  { id:'ME4C',  name:'ME 4Ch',    ja:'中位食道四腔像',      s:{ depth:101.5, rot:-21.2, ante:-33.8, lr:5.6,  omni:0   } },
-  { id:'MVCOM', name:'ME MV Comm',ja:'僧帽弁交連像',        s:{ depth:98.8,  rot:-23.3, ante:-33.4, lr:5.3,  omni:51  } },
-  { id:'ME2C',  name:'ME 2Ch',    ja:'中位食道二腔像',      s:{ depth:115.0, rot:-19.7, ante:-29.0, lr:1.1,  omni:85  } },
-  { id:'MELAX', name:'ME LAX',    ja:'中位食道長軸像',      s:{ depth:115.0, rot:-19.7, ante:-29.0, lr:1.1,  omni:122 } },
-  { id:'AVSAX', name:'ME AV SAX', ja:'大動脈弁短軸像',      s:{ depth:108.7, rot:-2.0,  ante:-5.9,  lr:-0.1, omni:27  } },
-  { id:'RVIO',  name:'ME RV In-Out',ja:'右室流入流出路像',  s:{ depth:122.4, rot:0.7,   ante:0.5,   lr:5.5,  omni:55  } },
-  { id:'BICAV', name:'ME Bicaval',ja:'上下大静脈像',        s:{ depth:95.2,  rot:26.1,  ante:-5.7,  lr:7.7,  omni:90  } },
-  { id:'ASAOL', name:'ME AsAo LAX',ja:'上行大動脈長軸像',   s:{ depth:74.8,  rot:5.6,   ante:0.0,   lr:0.5,  omni:106 } },
-  { id:'TGSAX', name:'TG mid SAX',ja:'経胃 乳頭筋レベル短軸', s:{ depth:233.2, rot:-8.6,  ante:36.2,  lr:-13.5,omni:7   } },
-  { id:'TG2C',  name:'TG 2Ch',    ja:'経胃二腔像',          s:{ depth:232.9, rot:-21.2, ante:38.5,  lr:-7.5, omni:97  } }
+  { id:'ME4C', name:'ME 4Ch', ja:'中位食道四腔像', s:{ depth:102.2, rot:-24.2, ante:-32.2, lr:-4.2, omni:5 } },
+  { id:'MVCOM', name:'ME MV Comm', ja:'僧帽弁交連像', s:{ depth:104.3, rot:-28.7, ante:-38.6, lr:-6.9, omni:54 } },
+  { id:'ME2C', name:'ME 2Ch', ja:'中位食道二腔像', s:{ depth:101.7, rot:-34.1, ante:-27.9, lr:-7.1, omni:100 } },
+  { id:'MELAX', name:'ME LAX', ja:'中位食道長軸像', s:{ depth:102.8, rot:-32.7, ante:-26.0, lr:-3.2, omni:123 } },
+  { id:'AVSAX', name:'ME AV SAX', ja:'大動脈弁短軸像', s:{ depth:115.0, rot:-22.2, ante:-0.9, lr:-1.1, omni:31 } },
+  { id:'RVIO', name:'ME RV In-Out', ja:'右室流入流出路像', s:{ depth:150.6, rot:-5.2, ante:-3.1, lr:-0.6, omni:59 } },
+  { id:'BICAV', name:'ME Bicaval', ja:'上下大静脈像', s:{ depth:94.2, rot:12.9, ante:-18.6, lr:0.3, omni:92 } },
+  { id:'ASAOL', name:'ME AsAo LAX', ja:'上行大動脈長軸像', s:{ depth:79.9, rot:-4.5, ante:0.0, lr:-0.2, omni:120 } },
+  { id:'ASAOS', name:'ME AsAo SAX', ja:'上行大動脈短軸像', s:{ depth:81.5, rot:-5.5, ante:-9.5, lr:-0.3, omni:29 } },
+  { id:'DAOS', name:'Desc Ao SAX', ja:'下行大動脈短軸像', s:{ depth:129.3, rot:-91.0, ante:0.0, lr:0.0, omni:0 } },
+  { id:'DAOL', name:'Desc Ao LAX', ja:'下行大動脈長軸像', s:{ depth:129.3, rot:-91.0, ante:0.0, lr:0.0, omni:90 } },
+  { id:'TGSAX', name:'TG mid SAX', ja:'経胃 乳頭筋レベル短軸', s:{ depth:251.2, rot:-23.3, ante:47.8, lr:22.6, omni:0 } },
+  { id:'TG2C', name:'TG 2Ch', ja:'経胃二腔像', s:{ depth:251.7, rot:-25.8, ante:47.0, lr:13.8, omni:80 } }
 ];
 
 function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
@@ -194,7 +197,8 @@ function setParam(k, v){
       座標系: BodyParts3D 準拠  +X=患者左, +Y=背側, +Z=頭側 (mm)
    ====================================================================== */
 function makeProbeModel(){
-  var PATH_PTS = [[2,34,175],[6,38,130],[12,40,95],[17,40,62],[20,38,32],[23,33,6],[26,24,-14],[29,13,-32],[31,4,-50],[33,-4,-68],[35,-10,-84]];
+  // 下行大動脈(FJ1931)の右側を通り、横隔膜下で大動脈の前を横切って胃へ（全区間で心臓・血管メッシュから7mm以上離す）
+  var PATH_PTS = [[0,40,175],[0,40,130],[-1,40,110],[-2,39,90],[-3,37,70],[-4,35,50],[-5,33,32],[-6,28,14],[-6,20,-2],[-2,8,-16],[8,-2,-28],[20,-6,-40],[29,-8,-54],[33,-10,-68],[35,-12,-84]];
   var curve = new THREE.CatmullRomCurve3(PATH_PTS.map(function(p){ return new THREE.Vector3(p[0],p[1],p[2]); }), false, 'centripetal');
   var L = curve.getLength(), N = 600, F = [];
   var fPrev = null, tPrev = null;
@@ -277,7 +281,7 @@ function depthRegion(s){
   if (s < 70) return 'UE（上部食道）';
   if (s < probe.GE - 15) return 'ME（中位食道）';
   if (s < probe.GE + 12) return 'LE / GEJ（下部食道〜噴門）';
-  if (s < 245) return 'TG（経胃）';
+  if (s < probe.length - 15) return 'TG（経胃）';
   return 'DTG（深部経胃）';
 }
 function incisorCm(s){ return 20 + s / 10; }
