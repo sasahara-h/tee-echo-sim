@@ -114,6 +114,52 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="bodyparts3d.js"></script>
 <script>
+// PV弁尖を主肺動脈起始部へ寄せる補正（メッシュ生成より前に実行）
+(function fixPV() {
+  try {
+    const P = globalThis.BP3D && globalThis.BP3D.parts;
+    if (!Array.isArray(P)) { console.warn('fixPV: BP3D.parts なし'); return; }
+    const find = re => P.findIndex(p => p && re.test(p.name || ''));
+    const iMyo = find(/^心室心筋/), iMPA = find(/主肺動脈/);
+    const pvIdx = P.map((_, i) => i).filter(i => /^PV/.test(P[i].name || ''));
+    if (iMyo < 0 || iMPA < 0 || !pvIdx.length) { console.warn('fixPV: パーツが見つからない'); return; }
+
+    const pts = v => { const a = []; for (let k = 0; k + 2 < v.length; k += 3) a.push([v[k], v[k+1], v[k+2]]); return a; };
+    const sub = (a, n) => { const s = Math.max(1, Math.floor(a.length / n)); return a.filter((_, i) => i % s === 0); };
+    const dist = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+    const near = (q, arr) => { let m = Infinity; for (const r of arr) { const d = dist(q, r); if (d < m) m = d; } return m; };
+    const cen = a => a.reduce((s, q) => [s[0]+q[0]/a.length, s[1]+q[1]/a.length, s[2]+q[2]/a.length], [0, 0, 0]);
+
+    const myo = sub(pts(P[iMyo].vertices), 4000);
+    const mpa = pts(P[iMPA].vertices);
+    const L = pvIdx.flatMap(i => sub(pts(P[i].vertices), 120));
+    const c = cen(L);
+
+    const ring = mpa.map(q => [dist(q, c), q]).sort((a, b) => a[0] - b[0])
+                    .slice(0, Math.max(20, Math.floor(mpa.length * 0.08))).map(x => x[1]);
+    const rc = cen(ring);
+    const d0 = rc.map((x, i) => x - c[i]), len = Math.hypot(...d0) || 1;
+    const u = d0.map(x => x / len);
+
+    const ratio = t => {
+      let vs = 0;
+      for (const q of L) { const s = [q[0]+u[0]*t, q[1]+u[1]*t, q[2]+u[2]*t]; if (near(s, mpa) < near(s, myo)) vs++; }
+      return vs / L.length;
+    };
+    let T = 0, R = ratio(0);
+    for (let t = 1; t <= 15; t++) { const r = ratio(t); T = t; R = r; if (r >= 0.45) break; }
+
+    pvIdx.forEach(i => {
+      const v = P[i].vertices;
+      for (let k = 0; k + 2 < v.length; k += 3) { v[k] += u[0]*T; v[k+1] += u[1]*T; v[k+2] += u[2]*T; }
+    });
+    console.log(`fixPV: PV弁尖を ${T} mm 移動  方向[${u.map(x => x.toFixed(2)).join(', ')}]  血管側 ${(R*100).toFixed(0)}%`);
+  } catch (e) {
+    console.warn('fixPV failed:', e);
+  }
+})();
+</script>
+<script>
 (function(){
 'use strict';
 
