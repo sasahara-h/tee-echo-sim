@@ -77,6 +77,9 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
 .prBtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .prInfo{margin-top:6px;font-size:11.5px;line-height:1.6;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:5px 7px}
 .prOpt{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer}
+.prPath{margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5}
+.prPath b{color:var(--accent2);font-weight:600}
+.prOpt select{margin-left:4px}
 </style>
 </head>
 <body>
@@ -105,8 +108,15 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
         <select id="prTarget" aria-label="練習する断面"></select>
         <button id="prStart" class="primary">開始</button>
       </div>
-      <label class="prOpt"><input type="checkbox" id="prFromStart" checked>上部食道・ニュートラルから始める</label>
+      <label class="prOpt">開始位置
+        <select id="prFrom" aria-label="開始位置">
+          <option value="course" selected>コースどおり（ひとつ前の断面から）</option>
+          <option value="neutral">上部食道・ニュートラルから</option>
+          <option value="here">今のプローブ位置から</option>
+        </select>
+      </label>
       <div id="prBody" hidden>
+        <div class="prPath" id="prPath"></div>
         <div class="prGoal" id="prGoal"></div>
         <div class="prMeter" id="prMeter"><div id="prBar"></div></div>
         <div class="prScore" id="prScore"></div>
@@ -115,6 +125,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
         <div class="prBtns">
           <button id="prHint">ヒント</button>
           <button id="prShow">答えを見る</button>
+          <button id="prNextView" class="primary" hidden>次の断面へ</button>
           <button id="prStop">終了</button>
         </div>
         <div class="prInfo" id="prInfo" hidden></div>
@@ -267,6 +278,8 @@ var PRESETS = [
   { id:'BICAV', name:'ME Bicaval', ja:'上下大静脈像', s:{ depth:94.2, rot:12.9, ante:-18.6, lr:0.3, omni:92 } },
   { id:'ASAOL', name:'ME AsAo LAX', ja:'上行大動脈長軸像', s:{ depth:77.1, rot:-3.6, ante:-1.7, lr:-9.0, omni:110 } },
   { id:'ASAOS', name:'ME AsAo SAX', ja:'上行大動脈短軸像', s:{ depth:81.5, rot:-5.5, ante:-9.5, lr:-0.3, omni:29 } },
+  { id:'UEARL', name:'UE Arch LAX', ja:'大動脈弓長軸像', s:{ depth:25.8, rot:-42.0, ante:-28.8, lr:16.1, omni:0 } },
+  { id:'UEARS', name:'UE Arch SAX', ja:'大動脈弓短軸像', s:{ depth:25.2, rot:-47.5, ante:-26.6, lr:15.6, omni:82 } },
   { id:'DAOS', name:'Desc Ao SAX', ja:'下行大動脈短軸像', s:{ depth:129.3, rot:-91.0, ante:0.0, lr:0.0, omni:0 } },
   { id:'DAOL', name:'Desc Ao LAX', ja:'下行大動脈長軸像', s:{ depth:129.3, rot:-91.0, ante:0.0, lr:0.0, omni:90 } },
   { id:'TGSAX', name:'TG mid SAX', ja:'経胃 乳頭筋レベル短軸', s:{ depth:258.2, rot:-11.7, ante:58.2, lr:5.5, omni:0 } },
@@ -1368,36 +1381,84 @@ requestAnimationFrame(loop);
 
 // デバッグ／テスト用フック
 /* ======================================================================
-   9. 練習モード（目標断面へのプローブ操作ガイド）
-      ガイド文・角度の目安は ASE/SCA 2013（Hahn ら）に準拠
+   9. 練習モード（ベース断面 → 派生断面のコース）
+      ベース：ME 4C（小児版 Puchalski 2019 の "home base"）／TG mid SAX／UE 大動脈弓 LAX
+      操作の目安は ASE/SCA 2013（Hahn ら）と ASE 2019（Puchalski ら）に準拠
    ====================================================================== */
+// parent: どの断面から派生させるか（null = ベース）。start: ベースの開始位置
+var COURSE = [
+  { id:'ME4C',  base:1, parent:null,    start:'neutral' },
+  { id:'MVCOM', base:1, parent:'ME4C' },
+  { id:'ME2C',  base:1, parent:'MVCOM' },
+  { id:'BICAV', base:1, parent:'ME2C' },
+  { id:'MELAX', base:1, parent:'ME2C' },
+  { id:'AVSAX', base:1, parent:'ME4C' },
+  { id:'RVIO',  base:1, parent:'AVSAX' },
+  { id:'ASAOL', base:1, parent:'AVSAX' },
+  { id:'ASAOS', base:1, parent:'ASAOL' },
+  { id:'TGSAX', base:2, parent:null,    start:'ME4C' },
+  { id:'TG2C',  base:2, parent:'TGSAX' },
+  { id:'UEARL', base:3, parent:null,    start:'ME4C' },
+  { id:'UEARS', base:3, parent:'UEARL' },
+  { id:'DAOS',  base:3, parent:'UEARL' },
+  { id:'DAOL',  base:3, parent:'DAOS' }
+];
+var BASE_NAME = { 1:'ベース1 中位食道（ME 4C）', 2:'ベース2 経胃（TG mid SAX）', 3:'ベース3 上部食道・大動脈（UE 大動脈弓）' };
 var PRACTICE_INFO = {
-  ME4C:  { how:'中位食道で 0〜20°。僧帽弁と心尖をそろえるため軽く後屈することが多い。', see:'左房・右房・左室・右室・僧帽弁・三尖弁・心房中隔。三尖弁の中隔尖が画面右、後尖が画面左。' },
-  MVCOM: { how:'ME 4Ch の位置のまま、オムニ角だけ 50〜70° へ進める。', see:'僧帽弁が P3-A2-P1 の3つの山に見え、両側に乳頭筋と腱索。' },
+  ME4C:  { how:'約30〜35cmまで進め、0〜20°。僧帽弁と心尖をそろえるため軽く後屈することが多い。すべての中位食道断面の出発点。', see:'左房・右房・左室・右室・僧帽弁・三尖弁・心房中隔。三尖弁の中隔尖が画面右、後尖が画面左。' },
+  MVCOM: { how:'ME 4C の位置のまま、オムニ角だけ 50〜70° へ進める。', see:'僧帽弁が P3-A2-P1 の3つの山に見え、両側に乳頭筋と腱索。' },
   ME2C:  { how:'交連像からさらにオムニ角を 80〜100° へ。', see:'左房・左心耳・左室の前壁と下壁・僧帽弁。右心系は消える。' },
-  MELAX: { how:'2Ch からオムニ角を 120〜140° へ。', see:'左房・左室・左室流出路・大動脈弁・上行大動脈の近位。経胸壁の傍胸骨長軸と同じ向き。' },
-  AVSAX: { how:'中位食道で 25〜45°。大動脈弁を画面中央に置く。軽い前屈が要ることもある。', see:'大動脈弁の3尖。心房中隔の隣が無冠尖、手前（近距離）が左冠尖、奥が右冠尖。左に右房、上に左房。' },
+  BICAV: { how:'ME 2Ch の角度（90〜110°）のまま、プローブを時計回り（患者の右）へ回す。反時計回りに回すと左心耳。', see:'上に左房、下に右房、画面右に上大静脈、画面左に下大静脈、その間に心房中隔。' },
+  MELAX: { how:'ME 2Ch からオムニ角を 120〜140° へ。', see:'左房・左室・左室流出路・大動脈弁・上行大動脈の近位。経胸壁の傍胸骨長軸と同じ向き。' },
+  AVSAX: { how:'ME 4C から少し引き抜き、オムニ角を 25〜45° へ。大動脈弁を画面中央に置く。軽い前屈が要ることもある。', see:'大動脈弁の3尖。心房中隔の隣が無冠尖、手前（近距離）が左冠尖、奥が右冠尖。左に右房、上に左房。' },
   RVIO:  { how:'AV SAX から少し進め、オムニ角を 50〜70° へ。', see:'中央に大動脈弁、画面左に三尖弁と右室、画面右に右室流出路と肺動脈弁。' },
-  BICAV: { how:'90〜110° にして、プローブを時計回り（患者の右）へ回す。', see:'上に左房、下に右房、画面右に上大静脈、画面左に下大静脈、その間に心房中隔。' },
-  ASAOL: { how:'少し引き抜き、オムニ角を 90〜110° へ戻す。', see:'上行大動脈の長軸。その手前（近距離）を右肺動脈が横切る。' },
-  ASAOS: { how:'引き抜いた位置でオムニ角を 0〜30° へ。', see:'上行大動脈の短軸、上大静脈、主肺動脈と右肺動脈。' },
-  DAOS:  { how:'0〜10° でプローブを反時計回り（患者の左）へ大きく回す。表示深度は浅くする。', see:'近距離に下行大動脈の円。出し入れすると大動脈を上下にたどれる。' },
-  DAOL:  { how:'Desc Ao SAX の位置でオムニ角を 90〜100° へ。', see:'下行大動脈の壁が平行な2本線になる。' },
-  TGSAX: { how:'胃まで進めて前屈し、0〜20° で左室を短軸に。', see:'左室の短軸（ドーナツ型）と2つの乳頭筋。画面左に右室。' },
-  TG2C:  { how:'TG mid SAX の位置でオムニ角を 90〜110° へ。', see:'左室の前壁と下壁、乳頭筋・腱索・僧帽弁。' }
+  ASAOL: { how:'AV SAX からさらに引き抜き、オムニ角を 90〜110° へ。', see:'上行大動脈の長軸。その手前（近距離）を右肺動脈が横切る。' },
+  ASAOS: { how:'AsAo LAX の位置でオムニ角を 0〜30° へ戻す。', see:'上行大動脈の短軸、上大静脈、主肺動脈と右肺動脈。' },
+  TGSAX: { how:'中位食道からまっすぐ胃まで（約40cm以上）進め、強めに前屈。0〜20°。', see:'左室の短軸（ドーナツ型）と2つの乳頭筋。画面左に右室。' },
+  TG2C:  { how:'TG mid SAX の位置でオムニ角を 90〜110° へ。', see:'左室の前壁と下壁、乳頭筋・腱索・僧帽弁。' },
+  UEARL: { how:'上部食道（約20〜25cm）まで引き抜き、0〜10°。大動脈弓が横長に見える向きに回す。', see:'大動脈弓の長軸。少し引くと、弓部の前を横切る無名静脈が見えることがある。' },
+  UEARS: { how:'UE 大動脈弓 LAX の位置でオムニ角を 70〜90° へ。', see:'大動脈弓の短軸（丸）。奥に主肺動脈と肺動脈弁が縦に見える。' },
+  DAOS:  { how:'UE 大動脈弓 LAX から反時計回り（患者の左）に回しながら、ゆっくり進めて大動脈を追う。0〜10°。表示深度は浅く。', see:'近距離に下行大動脈の円。出し入れすると大動脈を上下にたどれる。' },
+  DAOL:  { how:'Desc Ao SAX の位置でオムニ角を 90〜100° へ。', see:'下行大動脈の壁が平行な2本線になる。' }
 };
 var PR_TOL = { depth: 5, rot: 5, omni: 5, ante: 6, lr: 6 };
 var PR_START = { depth: 40, rot: 0, ante: 0, lr: 0, omni: 0 };
 
 function prEl(id){ return document.getElementById(id); }
 function prWrap(d){ return ((d + 540) % 360) - 180; }
+function prPreset(id){ return PRESETS.filter(function(p){ return p.id === id; })[0] || null; }
+function prCourse(id){ return COURSE.filter(function(c){ return c.id === id; })[0] || null; }
+function prChain(id){ var out = [], c = prCourse(id), guard = 0; while (c && guard++ < 20){ out.unshift(c.id); c = c.parent ? prCourse(c.parent) : null; } return out; }
 
 (function buildPractice(){
   var sel = prEl('prTarget');
   if (!sel) return;
-  var o = document.createElement('option'); o.value = '__random'; o.textContent = 'ランダム'; sel.appendChild(o);
-  PRESETS.forEach(function(p){ var op = document.createElement('option'); op.value = p.id; op.textContent = p.name + '（' + p.ja + '）'; sel.appendChild(op); });
-  prEl('prStart').addEventListener('click', practiceStart);
+  var o = document.createElement('option'); o.value = '__course'; o.textContent = 'コースを最初から順に'; sel.appendChild(o);
+  var r = document.createElement('option'); r.value = '__random'; r.textContent = 'ランダム'; sel.appendChild(r);
+  [1, 2, 3].forEach(function(b){
+    var g = document.createElement('optgroup'); g.label = BASE_NAME[b];
+    COURSE.filter(function(c){ return c.base === b; }).forEach(function(c){
+      var p = prPreset(c.id); if (!p) return;
+      var depth = prChain(c.id).length - 1;
+      var op = document.createElement('option'); op.value = c.id;
+      op.textContent = (depth ? new Array(depth + 1).join('　') + '└ ' : '★ ') + p.name + '（' + p.ja + '）';
+      g.appendChild(op);
+    });
+    sel.appendChild(g);
+  });
+  prEl('prStart').addEventListener('click', function(){
+    var v = prEl('prTarget').value;
+    if (v === '__course'){ PRACTICE.courseMode = true; practiceBegin(COURSE[0].id); }
+    else if (v === '__random'){ PRACTICE.courseMode = false; var pool = COURSE.filter(function(c){ return !PRACTICE.target || c.id !== PRACTICE.target.id; }); practiceBegin(pool[Math.floor(Math.random() * pool.length)].id); }
+    else { PRACTICE.courseMode = false; practiceBegin(v); }
+  });
+  prEl('prNextView').addEventListener('click', function(){
+    if (!PRACTICE.target) return;
+    var i = COURSE.map(function(c){ return c.id; }).indexOf(PRACTICE.target.id);
+    var next = COURSE[(i + 1) % COURSE.length];
+    PRACTICE.courseMode = true;
+    practiceBegin(next.id, true);
+  });
   prEl('prStop').addEventListener('click', practiceStop);
   prEl('prShow').addEventListener('click', function(){ if (PRACTICE.active && PRACTICE.target){ PRACTICE.revealed = true; startTween(PRACTICE.target.s); } });
   prEl('prHint').addEventListener('click', function(){
@@ -1410,24 +1471,41 @@ function prWrap(d){ return ((d + 540) % 360) - 180; }
   });
 })();
 
-function practiceStart(){
-  var sel = prEl('prTarget'); if (!sel) return;
-  var id = sel.value, list = PRESETS;
-  if (id === '__random'){
-    var pool = list.filter(function(p){ return !PRACTICE.target || p.id !== PRACTICE.target.id; });
-    PRACTICE.target = pool[Math.floor(Math.random() * pool.length)] || list[0];
-  } else {
-    PRACTICE.target = list.filter(function(p){ return p.id === id; })[0] || list[0];
-  }
-  PRACTICE.active = true; PRACTICE.passed = false; PRACTICE.revealed = false; PRACTICE.t0 = performance.now(); PRACTICE.best = 0;
+// keepPosition=true のとき（「次の断面へ」）は、合格した位置からそのまま続ける
+function practiceBegin(id, keepPosition){
+  var target = prPreset(id), c = prCourse(id);
+  if (!target || !c) return;
+  PRACTICE.target = target; PRACTICE.active = true; PRACTICE.passed = false; PRACTICE.revealed = false;
+  PRACTICE.t0 = performance.now(); PRACTICE.best = 0;
   cancelTween();
-  if (prEl('prFromStart') && prEl('prFromStart').checked){ ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, PR_START[k]); }); }
+  var from = prEl('prFrom') ? prEl('prFrom').value : 'course';
+  var startState = null;
+  if (from === 'neutral') startState = PR_START;
+  else if (from === 'course' && !keepPosition){
+    var srcId = c.parent || (c.start && c.start !== 'neutral' ? c.start : null);
+    var src = srcId ? prPreset(srcId) : null;
+    startState = src ? src.s : PR_START;
+  }
+  if (startState){ ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, startState[k]); }); }
   prEl('prBody').hidden = false;
   prEl('prInfo').hidden = true;
-  prEl('prStart').textContent = '次の問題';
+  prEl('prNextView').hidden = true;
+  prEl('prStart').textContent = 'やり直す';
+  // コース上の位置（パンくず）
+  var chain = prChain(id).map(function(x){ var p = prPreset(x); return p ? p.name : x; });
+  var path = prEl('prPath'); path.innerHTML = '';
+  var head = document.createElement('div'); head.textContent = BASE_NAME[c.base]; path.appendChild(head);
+  var line = document.createElement('div');
+  chain.forEach(function(nm, i){
+    if (i) line.appendChild(document.createTextNode(' → '));
+    if (i === chain.length - 1){ var bb = document.createElement('b'); bb.textContent = nm; line.appendChild(bb); }
+    else line.appendChild(document.createTextNode(nm));
+  });
+  path.appendChild(line);
+  var srcName = c.parent ? (prPreset(c.parent) || {}).name : (c.start === 'ME4C' ? 'ME 4Ch' : '上部食道・ニュートラル');
   prEl('prGoal').innerHTML = '';
-  var g = document.createElement('span'); g.textContent = '目標：' + PRACTICE.target.name;
-  var s = document.createElement('small'); s.textContent = PRACTICE.target.ja + '　（操作の目安：' + (PRACTICE_INFO[PRACTICE.target.id] ? PRACTICE_INFO[PRACTICE.target.id].how : '') + '）';
+  var g = document.createElement('span'); g.textContent = '目標：' + target.name + '（' + target.ja + '）';
+  var s = document.createElement('small'); s.textContent = (c.parent ? srcName + ' から：' : (c.base === 1 ? 'ベース断面：' : srcName + ' から：')) + (PRACTICE_INFO[id] ? PRACTICE_INFO[id].how : '');
   prEl('prGoal').appendChild(g); prEl('prGoal').appendChild(s);
   dirty = true; overlayDirty = true;
   practiceUpdate();
@@ -1491,10 +1569,11 @@ function practiceUpdate(){
   var next = steps.filter(function(s){ return !s.ok; })[0];
   var box = prEl('prNext');
   if (box){
-    box.classList.toggle('pass', pass);
-    if (pass) box.textContent = '合格！ ' + PRACTICE.target.name + ' が出ています' + (PRACTICE.revealed ? '（答えを見て到達）' : '（' + (PRACTICE.passSec || 0).toFixed(0) + ' 秒）') + '。「ヒント」で見えるべき構造を確認しよう。';
+    box.classList.toggle('pass', PRACTICE.passed);
+    if (PRACTICE.passed) box.textContent = '合格！ ' + PRACTICE.target.name + ' が出ています' + (PRACTICE.revealed ? '（答えを見て到達）' : '（' + (PRACTICE.passSec || 0).toFixed(0) + ' 秒）') + '。「ヒント」で見えるべき構造を確認しよう。';
     else box.textContent = '次の一手：' + (next ? next.text : '細かく調整して一致度を上げる');
   }
+  var nb = prEl('prNextView'); if (nb) nb.hidden = !PRACTICE.passed;
   var ol = prEl('prSteps');
   if (ol){
     ol.innerHTML = '';
