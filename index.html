@@ -56,6 +56,27 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
   #handleSvg{max-width:420px;margin:0 auto}
   header{order:0}
 }
+.practice{margin-top:8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.practice .prHead{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.practice .prHead b{font-size:12.5px;margin-right:auto}
+.practice select,.practice button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:12px;padding:3px 6px;font-family:inherit}
+.practice button{cursor:pointer}
+.practice button:hover{border-color:var(--accent)}
+.practice button.primary{border-color:var(--accent);color:#bff5ef}
+.prGoal{margin-top:6px;font-size:13px;font-weight:600}
+.prGoal small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+.prMeter{position:relative;height:8px;background:var(--panel);border:1px solid var(--line);border-radius:4px;margin-top:6px;overflow:hidden}
+.prMeter div{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent2);transition:width .15s}
+.prMeter.pass div{background:var(--accent)}
+.prScore{font-size:11px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.prNext{margin-top:6px;padding:6px 8px;border-radius:5px;background:#1d2a33;border-left:3px solid var(--accent2);font-size:13px;line-height:1.5}
+.prNext.pass{background:#173b3a;border-left-color:var(--accent);color:#bff5ef}
+.prSteps{margin:6px 0 0;padding-left:18px;font-size:11.5px;line-height:1.6;color:var(--muted)}
+.prSteps li.done{color:#6fcf97}
+.prSteps li.now{color:var(--text);font-weight:600}
+.prBtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.prInfo{margin-top:6px;font-size:11.5px;line-height:1.6;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:5px 7px}
+.prOpt{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -77,6 +98,27 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
       <div class="ro"><div class="k">前屈 / 後屈（大ダイヤル）</div><div class="v" id="roAnte">–</div></div>
       <div class="ro"><div class="k">左屈 / 右屈（小ダイヤル）</div><div class="v" id="roLR">–</div></div>
       <div class="ro" style="grid-column:1/3"><div class="k">オムニプレーン角 / 近い標準断面</div><div class="v" id="roOmni">–</div></div>
+    </div>
+    <div class="practice" id="practice">
+      <div class="prHead">
+        <b>練習モード</b>
+        <select id="prTarget" aria-label="練習する断面"></select>
+        <button id="prStart" class="primary">開始</button>
+      </div>
+      <label class="prOpt"><input type="checkbox" id="prFromStart" checked>上部食道・ニュートラルから始める</label>
+      <div id="prBody" hidden>
+        <div class="prGoal" id="prGoal"></div>
+        <div class="prMeter" id="prMeter"><div id="prBar"></div></div>
+        <div class="prScore" id="prScore"></div>
+        <div class="prNext" id="prNext"></div>
+        <ol class="prSteps" id="prSteps"></ol>
+        <div class="prBtns">
+          <button id="prHint">ヒント</button>
+          <button id="prShow">答えを見る</button>
+          <button id="prStop">終了</button>
+        </div>
+        <div class="prInfo" id="prInfo" hidden></div>
+      </div>
     </div>
     <details id="fine">
       <summary>微調整スライダー・表示設定</summary>
@@ -210,6 +252,7 @@ var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true
 };
 function bigSign(){ return settings.bigCW ? 1 : -1; }
 function smallSign(){ return settings.smallCW ? 1 : -1; }
+var PRACTICE = { active: false, target: null, passed: false, revealed: false, t0: 0, best: 0 };
 var dirty = true;        // 断面再計算フラグ
 var overlayDirty = true; // オーバーレイ再描画フラグ
 
@@ -867,6 +910,7 @@ function renderViews(){
 var ov = document.getElementById('echoOverlay');
 var ovx = ov.getContext('2d');
 function nearestPreset(){
+  if (PRACTICE.active && !PRACTICE.passed && !PRACTICE.revealed) return null; // 練習中は答えを隠す
   var best = null, bd = 1e9;
   PRESETS.forEach(function(p){
     var s = p.s;
@@ -942,7 +986,7 @@ function drawOverlay(){
   var np = nearestPreset();
   ovx.font = '600 12px system-ui, sans-serif'; ovx.textBaseline = 'bottom';
   ovx.fillStyle = np ? '#4fd1c5' : '#5d6b78';
-  ovx.fillText(np ? ('≈ ' + np.p.name + '（' + np.p.ja + '）') : '標準断面から外れています', 10, r.h - 8);
+  ovx.fillText((PRACTICE.active && PRACTICE.target && !np) ? ('練習中：目標 ' + PRACTICE.target.name) : (np ? ('≈ ' + np.p.name + '（' + np.p.ja + '）') : '標準断面から外れています'), 10, r.h - 8);
   ovx.textBaseline = 'top';
 }
 
@@ -1302,7 +1346,7 @@ function loop(now){
     if (controls) controls.update();
     renderViews();
     var key = state.depth.toFixed(2) + state.rot.toFixed(2) + state.ante.toFixed(2) + state.lr.toFixed(2) + state.omni.toFixed(2);
-    if (key !== lastStateKey){ lastStateKey = key; updateHandleUI(); }
+    if (key !== lastStateKey){ lastStateKey = key; updateHandleUI(); practiceUpdate(); }
     if (overlayDirty){ drawOverlay(); overlayDirty = false; }
   } catch (e) {
     frameErrors++;
@@ -1323,6 +1367,147 @@ if (loadingBox) loadingBox.style.display = 'none';
 requestAnimationFrame(loop);
 
 // デバッグ／テスト用フック
+/* ======================================================================
+   9. 練習モード（目標断面へのプローブ操作ガイド）
+      ガイド文・角度の目安は ASE/SCA 2013（Hahn ら）に準拠
+   ====================================================================== */
+var PRACTICE_INFO = {
+  ME4C:  { how:'中位食道で 0〜20°。僧帽弁と心尖をそろえるため軽く後屈することが多い。', see:'左房・右房・左室・右室・僧帽弁・三尖弁・心房中隔。三尖弁の中隔尖が画面右、後尖が画面左。' },
+  MVCOM: { how:'ME 4Ch の位置のまま、オムニ角だけ 50〜70° へ進める。', see:'僧帽弁が P3-A2-P1 の3つの山に見え、両側に乳頭筋と腱索。' },
+  ME2C:  { how:'交連像からさらにオムニ角を 80〜100° へ。', see:'左房・左心耳・左室の前壁と下壁・僧帽弁。右心系は消える。' },
+  MELAX: { how:'2Ch からオムニ角を 120〜140° へ。', see:'左房・左室・左室流出路・大動脈弁・上行大動脈の近位。経胸壁の傍胸骨長軸と同じ向き。' },
+  AVSAX: { how:'中位食道で 25〜45°。大動脈弁を画面中央に置く。軽い前屈が要ることもある。', see:'大動脈弁の3尖。心房中隔の隣が無冠尖、手前（近距離）が左冠尖、奥が右冠尖。左に右房、上に左房。' },
+  RVIO:  { how:'AV SAX から少し進め、オムニ角を 50〜70° へ。', see:'中央に大動脈弁、画面左に三尖弁と右室、画面右に右室流出路と肺動脈弁。' },
+  BICAV: { how:'90〜110° にして、プローブを時計回り（患者の右）へ回す。', see:'上に左房、下に右房、画面右に上大静脈、画面左に下大静脈、その間に心房中隔。' },
+  ASAOL: { how:'少し引き抜き、オムニ角を 90〜110° へ戻す。', see:'上行大動脈の長軸。その手前（近距離）を右肺動脈が横切る。' },
+  ASAOS: { how:'引き抜いた位置でオムニ角を 0〜30° へ。', see:'上行大動脈の短軸、上大静脈、主肺動脈と右肺動脈。' },
+  DAOS:  { how:'0〜10° でプローブを反時計回り（患者の左）へ大きく回す。表示深度は浅くする。', see:'近距離に下行大動脈の円。出し入れすると大動脈を上下にたどれる。' },
+  DAOL:  { how:'Desc Ao SAX の位置でオムニ角を 90〜100° へ。', see:'下行大動脈の壁が平行な2本線になる。' },
+  TGSAX: { how:'胃まで進めて前屈し、0〜20° で左室を短軸に。', see:'左室の短軸（ドーナツ型）と2つの乳頭筋。画面左に右室。' },
+  TG2C:  { how:'TG mid SAX の位置でオムニ角を 90〜110° へ。', see:'左室の前壁と下壁、乳頭筋・腱索・僧帽弁。' }
+};
+var PR_TOL = { depth: 5, rot: 5, omni: 5, ante: 6, lr: 6 };
+var PR_START = { depth: 40, rot: 0, ante: 0, lr: 0, omni: 0 };
+
+function prEl(id){ return document.getElementById(id); }
+function prWrap(d){ return ((d + 540) % 360) - 180; }
+
+(function buildPractice(){
+  var sel = prEl('prTarget');
+  if (!sel) return;
+  var o = document.createElement('option'); o.value = '__random'; o.textContent = 'ランダム'; sel.appendChild(o);
+  PRESETS.forEach(function(p){ var op = document.createElement('option'); op.value = p.id; op.textContent = p.name + '（' + p.ja + '）'; sel.appendChild(op); });
+  prEl('prStart').addEventListener('click', practiceStart);
+  prEl('prStop').addEventListener('click', practiceStop);
+  prEl('prShow').addEventListener('click', function(){ if (PRACTICE.active && PRACTICE.target){ PRACTICE.revealed = true; startTween(PRACTICE.target.s); } });
+  prEl('prHint').addEventListener('click', function(){
+    var box = prEl('prInfo'); if (!box || !PRACTICE.target) return;
+    var info = PRACTICE_INFO[PRACTICE.target.id] || { how:'', see:'' };
+    box.innerHTML = '';
+    var a = document.createElement('div'); a.textContent = '操作のコツ：' + info.how; box.appendChild(a);
+    var b = document.createElement('div'); b.textContent = '見えるべき構造：' + info.see; box.appendChild(b);
+    box.hidden = !box.hidden;
+  });
+})();
+
+function practiceStart(){
+  var sel = prEl('prTarget'); if (!sel) return;
+  var id = sel.value, list = PRESETS;
+  if (id === '__random'){
+    var pool = list.filter(function(p){ return !PRACTICE.target || p.id !== PRACTICE.target.id; });
+    PRACTICE.target = pool[Math.floor(Math.random() * pool.length)] || list[0];
+  } else {
+    PRACTICE.target = list.filter(function(p){ return p.id === id; })[0] || list[0];
+  }
+  PRACTICE.active = true; PRACTICE.passed = false; PRACTICE.revealed = false; PRACTICE.t0 = performance.now(); PRACTICE.best = 0;
+  cancelTween();
+  if (prEl('prFromStart') && prEl('prFromStart').checked){ ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, PR_START[k]); }); }
+  prEl('prBody').hidden = false;
+  prEl('prInfo').hidden = true;
+  prEl('prStart').textContent = '次の問題';
+  prEl('prGoal').innerHTML = '';
+  var g = document.createElement('span'); g.textContent = '目標：' + PRACTICE.target.name;
+  var s = document.createElement('small'); s.textContent = PRACTICE.target.ja + '　（操作の目安：' + (PRACTICE_INFO[PRACTICE.target.id] ? PRACTICE_INFO[PRACTICE.target.id].how : '') + '）';
+  prEl('prGoal').appendChild(g); prEl('prGoal').appendChild(s);
+  dirty = true; overlayDirty = true;
+  practiceUpdate();
+}
+function practiceStop(){
+  PRACTICE.active = false; PRACTICE.target = null;
+  prEl('prBody').hidden = true;
+  prEl('prStart').textContent = '開始';
+  overlayDirty = true; lastStateKey = '';
+}
+
+// 走査面どうしの一致度（0〜100）：ビーム方向・画面横方向・視野中心の距離で評価
+function practiceScore(){
+  try {
+    var a = probe.pose(state), b = probe.pose(PRACTICE.target.s);
+    var angBeam = Math.acos(clamp(a.beam.dot(b.beam), -1, 1)) / DEG;
+    var angLat = Math.acos(clamp(a.lat.dot(b.lat), -1, 1)) / DEG;
+    var ca = a.origin.clone().addScaledVector(a.beam, 50), cb = b.origin.clone().addScaledVector(b.beam, 50);
+    var dist = ca.distanceTo(cb);
+    var ang = Math.max(angBeam, angLat);
+    return 100 * Math.exp(-Math.pow(ang / 18, 2) - Math.pow(dist / 14, 2));
+  } catch (e) { return 0; }
+}
+
+function practiceSteps(){
+  var t = PRACTICE.target.s, steps = [];
+  var dDepth = t.depth - state.depth;
+  steps.push({ ok: Math.abs(dDepth) <= PR_TOL.depth,
+    text: (dDepth > 0 ? 'プローブを ' + (dDepth / 10).toFixed(1) + ' cm 進める' : 'プローブを ' + (-dDepth / 10).toFixed(1) + ' cm 引き抜く') + '（門歯から ' + incisorCm(t.depth).toFixed(1) + ' cm）',
+    done: '挿入深度 OK（' + incisorCm(state.depth).toFixed(1) + ' cm）' });
+  var dRot = prWrap(t.rot - state.rot);
+  steps.push({ ok: Math.abs(dRot) <= PR_TOL.rot,
+    text: dRot > 0 ? '時計回り（患者の右）に ' + Math.round(dRot) + '° 回す' : '反時計回り（患者の左）に ' + Math.round(-dRot) + '° 回す',
+    done: '回転 OK' });
+  var dOmni = t.omni - state.omni;
+  steps.push({ ok: Math.abs(dOmni) <= PR_TOL.omni,
+    text: 'オムニ角を ' + Math.round(t.omni) + '° まで' + (dOmni > 0 ? '進める（＋）' : '戻す（−）'),
+    done: 'オムニ角 OK（' + Math.round(state.omni) + '°）' });
+  var dAnte = t.ante - state.ante;
+  steps.push({ ok: Math.abs(dAnte) <= PR_TOL.ante,
+    text: '大ダイヤルで' + (dAnte > 0 ? '前屈' : '後屈') + '方向へ ' + Math.round(Math.abs(dAnte)) + '°（目標：' + (Math.abs(t.ante) < 1 ? 'ニュートラル' : (t.ante > 0 ? '前屈 ' : '後屈 ') + Math.round(Math.abs(t.ante)) + '°') + '）',
+    done: '前屈/後屈 OK' });
+  var dLR = t.lr - state.lr;
+  steps.push({ ok: Math.abs(dLR) <= PR_TOL.lr,
+    text: '小ダイヤルで' + (dLR > 0 ? '右屈' : '左屈') + '方向へ ' + Math.round(Math.abs(dLR)) + '°',
+    done: '左右屈 OK' });
+  return steps;
+}
+
+function practiceUpdate(){
+  if (!PRACTICE.active || !PRACTICE.target) return;
+  var sc = practiceScore();
+  PRACTICE.best = Math.max(PRACTICE.best || 0, sc);
+  var pass = sc >= 85;
+  if (pass && !PRACTICE.passed){ PRACTICE.passed = true; PRACTICE.passSec = (performance.now() - PRACTICE.t0) / 1000; }
+  var bar = prEl('prBar'), meter = prEl('prMeter');
+  if (bar) bar.style.width = clamp(sc, 0, 100).toFixed(0) + '%';
+  if (meter) meter.classList.toggle('pass', pass);
+  setText('prScore', '一致度 ' + sc.toFixed(0) + ' / 100（85以上で合格）');
+  var steps = practiceSteps();
+  var next = steps.filter(function(s){ return !s.ok; })[0];
+  var box = prEl('prNext');
+  if (box){
+    box.classList.toggle('pass', pass);
+    if (pass) box.textContent = '合格！ ' + PRACTICE.target.name + ' が出ています' + (PRACTICE.revealed ? '（答えを見て到達）' : '（' + (PRACTICE.passSec || 0).toFixed(0) + ' 秒）') + '。「ヒント」で見えるべき構造を確認しよう。';
+    else box.textContent = '次の一手：' + (next ? next.text : '細かく調整して一致度を上げる');
+  }
+  var ol = prEl('prSteps');
+  if (ol){
+    ol.innerHTML = '';
+    var nowMarked = false;
+    steps.forEach(function(s){
+      var li = document.createElement('li');
+      if (s.ok){ li.className = 'done'; li.textContent = '✓ ' + s.done; }
+      else { if (!nowMarked){ li.className = 'now'; nowMarked = true; } li.textContent = s.text; }
+      ol.appendChild(li);
+    });
+  }
+}
+
 window.TEESIM = { state: state, settings: settings, setParam: setParam, presets: PRESETS, goPreset: function(id){ var p = PRESETS.filter(function(x){ return x.id === id; })[0]; if (p){ cancelTween(); ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, p.s[k]); }); } } };
 })();
 </script>
