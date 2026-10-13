@@ -289,7 +289,7 @@ function classify(part){
   var id = String(part.fileId || ''), nm = String(part.name || '');
   if (/FJ2428/.test(id)) return { kind:'myo',   fill:0.60, slabW:0.55, slabG:0.75, valve:0, lbl:'myo' };
   if (/FJ2439|FJ2438/.test(id)) return { kind:'atrium', fill:0.52, slabW:0.55, slabG:0.70, valve:0 };
-  if (/FJ3413|FJ2966|FJ3645|FJ3441|FJ3659/.test(id)) return { kind:'vessel', fill:0.0, slabW:1.25, slabG:0.85, valve:0 };
+  if (/FJ3413|FJ3411|FJ1931|FJ2966|FJ3019|FJ2924|FJ3645|FJ3441|FJ3659/.test(id)) return { kind:'vessel', fill:0.0, slabW:1.25, slabG:0.85, valve:0 };
   if (/弁|TV|MV|AV|PV/.test(nm) || /FJ24(17|20|21|26|27|31|32|33|34|35|36)/.test(id)) return { kind:'valve', fill:0.95, slabW:1.25, slabG:1.0, valve:1 };
   return { kind:'other', fill:0.5, slabW:0.6, slabG:0.7, valve:0 };
 }
