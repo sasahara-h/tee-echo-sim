@@ -40,8 +40,8 @@ HEART_PARTS = [
 
     # --- 大動脈弁 (Aortic Valve) ---
     ("AV 右冠尖 (RCC)",     ["FJ2435"],           "#ffffff", 0.95, 0.5, 15),
-    ("AV 左冠尖 (LCC)",     ["FJ2431"],           "#ffffff", 0.95, 0.5, 16),
-    ("AV 無冠尖 (NCC)",     ["FJ2426"],           "#ffffff", 0.95, 0.5, 17),
+    ("AV 左冠尖 (LCC)",     ["FJ2426"],           "#ffffff", 0.95, 0.5, 16),
+    ("AV 無冠尖 (NCC)",     ["FJ2431"],           "#ffffff", 0.95, 0.5, 17),
 
     # --- 肺動脈弁 (Pulmonary Valve) ---
     ("PV 前尖 (Anterior)",  ["FJ2417"],           "#ffffff", 0.95, 0.5, 18),
