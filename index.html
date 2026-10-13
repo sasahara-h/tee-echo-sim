@@ -170,11 +170,15 @@ var overlayDirty = true; // オーバーレイ再描画フラグ
 // 標準断面プリセット（このBodyParts3Dモデル上でランドマーク最適化した値）
 var PRESETS = [
   { id:'ME4C',  name:'ME 4Ch',    ja:'中位食道四腔像',      s:{ depth:101.5, rot:-21.2, ante:-33.8, lr:5.6,  omni:0   } },
+  { id:'MVCOM', name:'ME MV Comm',ja:'僧帽弁交連像',        s:{ depth:98.8,  rot:-23.3, ante:-33.4, lr:5.3,  omni:51  } },
   { id:'ME2C',  name:'ME 2Ch',    ja:'中位食道二腔像',      s:{ depth:115.0, rot:-19.7, ante:-29.0, lr:1.1,  omni:85  } },
   { id:'MELAX', name:'ME LAX',    ja:'中位食道長軸像',      s:{ depth:115.0, rot:-19.7, ante:-29.0, lr:1.1,  omni:122 } },
   { id:'AVSAX', name:'ME AV SAX', ja:'大動脈弁短軸像',      s:{ depth:108.7, rot:-2.0,  ante:-5.9,  lr:-0.1, omni:27  } },
+  { id:'RVIO',  name:'ME RV In-Out',ja:'右室流入流出路像',  s:{ depth:122.4, rot:0.7,   ante:0.5,   lr:5.5,  omni:55  } },
   { id:'BICAV', name:'ME Bicaval',ja:'上下大静脈像',        s:{ depth:95.2,  rot:26.1,  ante:-5.7,  lr:7.7,  omni:90  } },
-  { id:'TGSAX', name:'TG mid SAX',ja:'経胃 乳頭筋レベル短軸', s:{ depth:233.2, rot:-8.6,  ante:36.2,  lr:-13.5,omni:7   } }
+  { id:'ASAOL', name:'ME AsAo LAX',ja:'上行大動脈長軸像',   s:{ depth:74.8,  rot:5.6,   ante:0.0,   lr:0.5,  omni:106 } },
+  { id:'TGSAX', name:'TG mid SAX',ja:'経胃 乳頭筋レベル短軸', s:{ depth:233.2, rot:-8.6,  ante:36.2,  lr:-13.5,omni:7   } },
+  { id:'TG2C',  name:'TG 2Ch',    ja:'経胃二腔像',          s:{ depth:232.9, rot:-21.2, ante:38.5,  lr:-7.5, omni:97  } }
 ];
 
 function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
