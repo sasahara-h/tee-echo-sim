@@ -76,6 +76,9 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
 .prSteps{margin:6px 0 0;padding-left:18px;font-size:11.5px;line-height:1.6;color:var(--muted)}
 .prSteps li.done{color:#6fcf97}
 .prSteps li.now{color:var(--text);font-weight:600}
+.prStepsHead{margin-top:6px;font-size:11px;color:var(--muted)}
+.prStepsHead + .prSteps{margin-top:2px}
+.prSteps.ref{color:var(--muted);opacity:.75}
 .prBtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .prInfo{margin-top:6px;font-size:11.5px;line-height:1.6;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:5px 7px}
 .prOpt{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer}
@@ -123,6 +126,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
         <div class="prMeter" id="prMeter"><div id="prBar"></div></div>
         <div class="prScore" id="prScore"></div>
         <div class="prNext" id="prNext"></div>
+        <div class="prStepsHead" id="prStepsHead" hidden>模範の操作との差（参考）</div>
         <ol class="prSteps" id="prSteps"></ol>
         <div class="prBtns">
           <button id="prHint">ヒント</button>
@@ -1533,28 +1537,42 @@ function practiceScore(){
   } catch (e) { return 0; }
 }
 
+// 角度の絶対値表記（neg/pos：負・正の向きの名前）
+function prAbs(v, neg, pos, zero){ var n = Math.round(Math.abs(v)); return n === 0 ? zero : (v > 0 ? pos : neg) + n + '°'; }
+
+// 各ステップ：move＝今からの操作量、target＝目標の絶対値、diff＝合格後の参考表示（現在が模範からどれだけずれているか）
 function practiceSteps(){
   var t = PRACTICE.target.s, steps = [];
-  var dDepth = t.depth - state.depth;
-  steps.push({ ok: Math.abs(dDepth) <= PR_TOL.depth,
-    text: (dDepth > 0 ? 'プローブを ' + (dDepth / 10).toFixed(1) + ' cm 進める' : 'プローブを ' + (-dDepth / 10).toFixed(1) + ' cm 引き抜く') + '（門歯から ' + incisorCm(t.depth).toFixed(1) + ' cm）',
-    done: '挿入深度 OK（' + incisorCm(state.depth).toFixed(1) + ' cm）' });
-  var dRot = prWrap(t.rot - state.rot);
-  steps.push({ ok: Math.abs(dRot) <= PR_TOL.rot,
-    text: dRot > 0 ? '時計回り（患者の右）に ' + Math.round(dRot) + '° 回す' : '反時計回り（患者の左）に ' + Math.round(-dRot) + '° 回す',
-    done: '回転 OK' });
-  var dOmni = t.omni - state.omni;
-  steps.push({ ok: Math.abs(dOmni) <= PR_TOL.omni,
-    text: 'オムニ角を ' + Math.round(t.omni) + '° まで' + (dOmni > 0 ? '進める（＋）' : '戻す（−）'),
-    done: 'オムニ角 OK（' + Math.round(state.omni) + '°）' });
-  var dAnte = t.ante - state.ante;
-  steps.push({ ok: Math.abs(dAnte) <= PR_TOL.ante,
-    text: '大ダイヤルで' + (dAnte > 0 ? '前屈' : '後屈') + '方向へ ' + Math.round(Math.abs(dAnte)) + '°（目標：' + (Math.abs(t.ante) < 1 ? 'ニュートラル' : (t.ante > 0 ? '前屈 ' : '後屈 ') + Math.round(Math.abs(t.ante)) + '°') + '）',
-    done: '前屈/後屈 OK' });
-  var dLR = t.lr - state.lr;
-  steps.push({ ok: Math.abs(dLR) <= PR_TOL.lr,
-    text: '小ダイヤルで' + (dLR > 0 ? '右屈' : '左屈') + '方向へ ' + Math.round(Math.abs(dLR)) + '°',
-    done: '左右屈 OK' });
+  var dDepth = t.depth - state.depth, nDepth = (Math.abs(dDepth) / 10).toFixed(1);
+  steps.push({ label: '挿入深度', ok: Math.abs(dDepth) <= PR_TOL.depth,
+    move: '今から' + nDepth + 'cm' + (dDepth > 0 ? '進める' : '引き抜く'),
+    target: '門歯から' + incisorCm(t.depth).toFixed(1) + 'cm',
+    diff: '模範より' + nDepth + 'cm' + (dDepth > 0 ? '浅い' : '深い') });
+  var dRot = prWrap(t.rot - state.rot), nRot = Math.round(Math.abs(dRot));
+  steps.push({ label: '回転', ok: Math.abs(dRot) <= PR_TOL.rot,
+    move: '今から' + (dRot > 0 ? '時計回り' : '反時計回り') + 'に' + nRot + '°',
+    target: prAbs(t.rot, '反時計回り', '時計回り', '0°'),
+    diff: '模範より' + (dRot > 0 ? '反時計回り' : '時計回り') + 'に' + nRot + '°' });
+  var dOmni = t.omni - state.omni, nOmni = Math.round(Math.abs(dOmni));
+  steps.push({ label: 'オムニ角', ok: Math.abs(dOmni) <= PR_TOL.omni,
+    move: '今からオムニ角を' + nOmni + '°' + (dOmni > 0 ? '進める' : '戻す'),
+    target: Math.round(t.omni) + '°',
+    diff: '模範より' + nOmni + '°' + (dOmni > 0 ? '小さい' : '大きい') });
+  var dAnte = t.ante - state.ante, nAnte = Math.round(Math.abs(dAnte));
+  steps.push({ label: '前屈/後屈', ok: Math.abs(dAnte) <= PR_TOL.ante,
+    move: '今から' + (dAnte > 0 ? '前屈' : '後屈') + '方向に' + nAnte + '°',
+    target: prAbs(t.ante, '後屈', '前屈', 'ニュートラル'),
+    diff: '模範より' + (dAnte > 0 ? '後屈' : '前屈') + '側に' + nAnte + '°' });
+  var dLR = t.lr - state.lr, nLR = Math.round(Math.abs(dLR));
+  steps.push({ label: '左右屈', ok: Math.abs(dLR) <= PR_TOL.lr,
+    move: '今から' + (dLR > 0 ? '右屈' : '左屈') + '方向に' + nLR + '°',
+    target: prAbs(t.lr, '左屈', '右屈', 'ニュートラル'),
+    diff: '模範より' + (dLR > 0 ? '左屈' : '右屈') + '側に' + nLR + '°' });
+  steps.forEach(function(s){
+    s.text = s.move + '（目標：' + s.target + '）';
+    s.done = s.label + ' OK（目標：' + s.target + '）';
+    s.ref = s.label + '：' + (s.ok ? '模範どおり' : s.diff) + '（模範：' + s.target + '）';
+  });
   return steps;
 }
 
@@ -1577,13 +1595,17 @@ function practiceUpdate(){
     else box.textContent = '次の一手：' + (next ? next.text : '細かく調整して一致度を上げる');
   }
   var nb = prEl('prNextView'); if (nb) nb.hidden = !PRACTICE.passed;
+  // 合格後は「次の一手」を促さず、模範との差を参考として灰色で出す
+  var head = prEl('prStepsHead'); if (head) head.hidden = !PRACTICE.passed;
   var ol = prEl('prSteps');
   if (ol){
     ol.innerHTML = '';
+    ol.classList.toggle('ref', PRACTICE.passed);
     var nowMarked = false;
     steps.forEach(function(s){
       var li = document.createElement('li');
-      if (s.ok){ li.className = 'done'; li.textContent = '✓ ' + s.done; }
+      if (PRACTICE.passed) li.textContent = s.ref;
+      else if (s.ok){ li.className = 'done'; li.textContent = '✓ ' + s.done; }
       else { if (!nowMarked){ li.className = 'now'; nowMarked = true; } li.textContent = s.text; }
       ol.appendChild(li);
     });
