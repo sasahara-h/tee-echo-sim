@@ -36,6 +36,9 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
 .toggles{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px}
 .toggles label{font-size:12px;color:var(--text);display:flex;align-items:center;gap:4px;cursor:pointer}
 .hint{color:var(--muted);font-size:11px;line-height:1.5;margin-top:8px}
+.clickStep{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:8px;padding-top:6px;border-top:1px solid var(--line);font-size:12px}
+.clickStep label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.clickStep input[type=number]{width:46px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;font-size:12px;padding:1px 4px;font-family:inherit}
 .credit{color:var(--muted);font-size:9px;line-height:1.4;margin-top:10px;white-space:nowrap}
 .credit a{color:var(--muted)}
 .view{position:relative;min-width:0;min-height:0;border-right:1px solid var(--line)}
@@ -149,6 +152,11 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
         <label><input type="checkbox" id="tgFan" checked>3Dにビーム扇</label>
         <label><input type="checkbox" id="tgBigCW" checked>大ダイヤル：時計回り＝前屈</label>
         <label><input type="checkbox" id="tgSmallCW" checked>小ダイヤル：時計回り＝右屈</label>
+      </div>
+      <div class="clickStep">
+        <label><input type="checkbox" id="tgClick">クリック刻みモード（検証用）</label>
+        <label>前屈/後屈 <input type="number" id="clickAnte" min="1" step="1" value="14">°</label>
+        <label>左右屈 <input type="number" id="clickLr" min="1" step="1" value="9">°</label>
       </div>
     </details>
     <div class="hint">
@@ -270,6 +278,15 @@ var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true
 };
 function bigSign(){ return settings.bigCW ? 1 : -1; }
 function smallSign(){ return settings.smallCW ? 1 : -1; }
+
+// 検証用「クリック刻みモード」：ON のとき ante / lr の手動操作を刻み幅の倍数に丸める（プリセット・練習モードの移動は対象外）
+var CLICK = { on: false, ante: 14, lr: 9 };
+function clickActive(k){ return CLICK.on && CLICK[k] > 0 && !!LIMITS[k]; }
+function clickFit(k, n){ var s = CLICK[k]; while (n > LIMITS[k][1]) n -= s; while (n < LIMITS[k][0]) n += s; return n; }
+function clickSnap(k, v){ return clickActive(k) ? clickFit(k, Math.round(v / CLICK[k]) * CLICK[k]) : v; }
+// キー・ホイール：今の値から dir 方向の隣の倍数へ
+function clickNext(k, dir){ var s = CLICK[k], q = state[k] / s; return clickFit(k, (dir > 0 ? Math.floor(q + 1e-6) + 1 : Math.ceil(q - 1e-6) - 1) * s); }
+function stepParam(k, dir, amount){ if (clickActive(k)) setParam(k, clickNext(k, dir)); else setParam(k, state[k] + dir * amount); }
 var PRACTICE = { active: false, target: null, passed: false, revealed: false, t0: 0, best: 0 };
 var dirty = true;        // 断面再計算フラグ
 var overlayDirty = true; // オーバーレイ再描画フラグ
@@ -1199,8 +1216,14 @@ svg.addEventListener('pointermove', function(evt){
   if (drag.target === 'big' || drag.target === 'small'){
     var a = Math.atan2(p.y - DC.y, p.x - DC.x), da = angDiff(a, drag.lastA) / DEG;
     drag.lastA = a;
-    if (drag.target === 'big') setParam('ante', state.ante + bigSign() * da / 1.6);
-    else setParam('lr', state.lr + smallSign() * da / 3.0);
+    var dk = drag.target === 'big' ? 'ante' : 'lr';
+    var dv = drag.target === 'big' ? bigSign() * da / 1.6 : smallSign() * da / 3.0;
+    if (clickActive(dk)){
+      // 丸める前の値を積算して、刻み幅未満の動きも取りこぼさない
+      if (drag.raw === undefined) drag.raw = state[dk];
+      drag.raw = clamp(drag.raw + dv, LIMITS[dk][0], LIMITS[dk][1]);
+      setParam(dk, clickSnap(dk, drag.raw));
+    } else setParam(dk, state[dk] + dv);
   } else if (drag.target === 'grip'){
     var ddx = p.x - drag.last.x, ddy = p.y - drag.last.y;
     // 主に動いた軸を優先（誤操作防止）
@@ -1221,8 +1244,8 @@ svg.addEventListener('lostpointercapture', endDrag);
 svg.addEventListener('wheel', function(evt){
   var p = svgPoint(evt), rr = Math.hypot(p.x - DC.x, p.y - DC.y), s = evt.deltaY > 0 ? -1 : 1;
   var used = true;
-  if (rr <= R_SMALL) setParam('lr', state.lr + s * 1.5);
-  else if (rr <= R_BIG_OUT) setParam('ante', state.ante + s * 2);
+  if (rr <= R_SMALL) stepParam('lr', s, 1.5);
+  else if (rr <= R_BIG_OUT) stepParam('ante', s, 2);
   else if (p.y > OM.y - OM.r - 30 && p.y < OM.y + 40) setParam('omni', state.omni + s * 2);
   else if (p.y >= GRIP.y) setParam('depth', state.depth - s * 3);
   else used = false;
@@ -1255,10 +1278,10 @@ window.addEventListener('keydown', function(evt){
   else if (k === 's' || k === 'S') setParam('depth', state.depth + 2);
   else if (k === 'a' || k === 'A') setParam('rot', state.rot - 2);
   else if (k === 'd' || k === 'D') setParam('rot', state.rot + 2);
-  else if (k === 'ArrowUp') setParam('ante', state.ante + 2);
-  else if (k === 'ArrowDown') setParam('ante', state.ante - 2);
-  else if (k === 'ArrowLeft') setParam('lr', state.lr - 2);
-  else if (k === 'ArrowRight') setParam('lr', state.lr + 2);
+  else if (k === 'ArrowUp') stepParam('ante', 1, 2);
+  else if (k === 'ArrowDown') stepParam('ante', -1, 2);
+  else if (k === 'ArrowLeft') stepParam('lr', -1, 2);
+  else if (k === 'ArrowRight') stepParam('lr', 1, 2);
   else if (k === 'q' || k === 'Q') setParam('omni', state.omni - 2);
   else if (k === 'e' || k === 'E') setParam('omni', state.omni + 2);
   else used = false;
@@ -1282,7 +1305,7 @@ var sliderDefs = [
     var lb = document.createElement('label'); lb.textContent = sd.label;
     var inp = document.createElement('input'); inp.type = 'range'; inp.min = sd.min; inp.max = sd.max; inp.step = sd.step; inp.value = sd.get();
     var out = document.createElement('span'); out.textContent = sd.fmt(sd.get());
-    inp.addEventListener('input', function(){ cancelTween(); sd.set(+inp.value); out.textContent = sd.fmt(+inp.value); });
+    inp.addEventListener('input', function(){ cancelTween(); var v = clickSnap(sd.k, +inp.value); sd.set(v); out.textContent = sd.fmt(v); });
     row.appendChild(lb); row.appendChild(inp); row.appendChild(out); host.appendChild(row);
     sd.input = inp; sd.out = out;
   });
@@ -1295,6 +1318,14 @@ function bindToggle(id, key, cb){
 }
 bindToggle('tgBigCW', 'bigCW', function(){ lastStateKey = ''; });
 bindToggle('tgSmallCW', 'smallCW', function(){ lastStateKey = ''; });
+(function bindClickStep(){
+  var tg = document.getElementById('tgClick'), ia = document.getElementById('clickAnte'), il = document.getElementById('clickLr');
+  if (!tg || !ia || !il) return;
+  tg.checked = CLICK.on; ia.value = CLICK.ante; il.value = CLICK.lr;
+  tg.addEventListener('change', function(){ CLICK.on = tg.checked; });
+  function bindStep(inp, k){ inp.addEventListener('change', function(){ var v = parseFloat(inp.value); if (v > 0) CLICK[k] = v; else inp.value = CLICK[k]; }); }
+  bindStep(ia, 'ante'); bindStep(il, 'lr');
+})();
 bindToggle('tgCut', 'cut'); bindToggle('tgGhost', 'ghost'); bindToggle('tgLabels', 'labels'); bindToggle('tgSpeckle', 'speckle'); bindToggle('tgLines', 'lines'); bindToggle('tgFan', 'fan');
 
 /* ---------- プリセット（ダイヤルが自動トゥイーン） ---------- */
