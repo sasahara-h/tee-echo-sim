@@ -27,6 +27,8 @@ PART = "assembly"; // [assembly, frame, big_knob, small_knob, gear_a, pinion_a, 
 PRINT_ORIENT = false;
 // 組立図で、ボリューム・パイプ・ナットの簡易モデルを表示する
 SHOW_PARTS = true;
+// 組立図を半分に切って中を見せる（View → Back で切り口が正面に来る）
+CUTAWAY = false;
 
 /* [歯車（比率はここで決める）] */
 MOD = 1.0;           // モジュール（歯の大きさ）。3Dプリントなら 1.0 が無難
@@ -333,4 +335,5 @@ else if (PART == "pinion_a")   gear_part(Z_PINION_A, POT_SHAFT_D + KNURL_FIT);
 else if (PART == "gear_b")     gear_part(Z_GEAR_B,   INNER_TUBE_D + PRESS_FIT);
 else if (PART == "pinion_b")   gear_part(Z_PINION_B, POT_SHAFT_D + KNURL_FIT);
 else if (PART == "fit_test")   fit_test();
+else if (CUTAWAY) difference() { assembly(); translate([-200, 0, -200]) cube([400, 200, 400]); }
 else assembly();
