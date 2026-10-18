@@ -242,6 +242,7 @@ body.controller #handleSvg{position:absolute;top:2px;left:2px;right:2px;bottom:2
         <label><input type="checkbox" id="tgSpeckle" checked>スペックル</label>
         <label><input type="checkbox" id="tgLines" checked>走査線</label>
         <label><input type="checkbox" id="tgFan" checked>3Dにビーム扇</label>
+        <label><input type="checkbox" id="tgHolo">3Dをホログラム表示</label>
         <label><input type="checkbox" id="tgBigCW" checked>大ダイヤル：時計回り＝前屈</label>
         <label><input type="checkbox" id="tgSmallCW" checked>小ダイヤル：時計回り＝右屈</label>
       </div>
@@ -410,7 +411,7 @@ var state = { depth: 102.2, rot: -24.2, ante: -32.2, lr: -4.2, omni: 5 };
 // ?controller=部屋ID で開いたとき＝スマホ側コントローラー（3D・エコーは描画しない）
 var CTRL_ROOM = (function(){ try { return new URLSearchParams(location.search).get('controller') || ''; } catch (e) { return ''; } })().replace(/[^0-9a-z]/gi, '');
 if (CTRL_ROOM) document.body.classList.add('controller');
-var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true, cut: true, fan: true, ghost: true,
+var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true, cut: true, fan: true, ghost: true, holo: false,
   bigCW: true,    // true : 大ダイヤル時計回り（親指でシャフトから離す方向）＝前屈
   smallCW: true   // true : 小ダイヤル時計回り＝右屈
 };
@@ -845,6 +846,7 @@ var dl1 = new THREE.DirectionalLight(0xffffff, 0.75); dl1.position.set(-200, -30
 var dl2 = new THREE.DirectionalLight(0x99bbff, 0.35); dl2.position.set(300, 200, -100); scene3D.add(dl2);
 
 var heartMats = [];
+var heartMeshes = [];
 var ghostMeshes = [];
 var clip3DGhost = new THREE.Plane(new THREE.Vector3(0,0,1), 1e6);
 parts.forEach(function(pt){
@@ -856,6 +858,8 @@ parts.forEach(function(pt){
   heartMats.push(m);
   var mesh = new THREE.Mesh(pt.geom, m);
   mesh.renderOrder = pt.cls.kind === 'valve' ? 1 : 2;
+  mesh.userData.part = pt;
+  heartMeshes.push(mesh);
   scene3D.add(mesh);
   // カットで除去された側を「輪郭ゴースト」として表示（視線と接する縁ほど濃いリムライト）
   var gm = new THREE.ShaderMaterial({
@@ -890,6 +894,78 @@ parts.forEach(function(pt){
   ghostMeshes.push(gmesh);
   scene3D.add(gmesh);
 });
+
+/* ---------- 4d. ホログラム表示（3Dビューだけ。2Dエコー・練習モードには影響しない） ----------
+   ON：心臓・血管とゴーストのマテリアルを加算合成のリムライト用シェーダーに差し替え、背景を暗くする
+   OFF：元のマテリアル・背景に戻す（見た目は完全に元どおり）
+   このブロックと、heartMeshes／settings.holo／tgHolo／loop 内の holoTick 呼び出しを消せば丸ごと削除できる */
+var HOLO_BG = new THREE.Color(0x020609), HOLO_BG_OFF = scene3D.background.clone();
+var holoU = { uTime: { value: 0 }, uGain: { value: 1 } };   // 全マテリアルで共有（毎フレーム更新）
+var holoMats = null;                                          // 初回 ON のときに作る
+function makeHoloMat(color, base, rim, plane){
+  return new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(color) }, uBase: { value: base }, uRim: { value: rim },
+                uTime: holoU.uTime, uGain: holoU.uGain },
+    vertexShader: [
+      '#include <clipping_planes_pars_vertex>',
+      'varying vec3 vN; varying vec3 vV;',
+      'void main(){',
+      '  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);',
+      '  vN = normalize(normalMatrix * normal); vV = normalize(-mvPosition.xyz);',
+      '  gl_Position = projectionMatrix * mvPosition;',
+      '  #include <clipping_planes_vertex>',
+      '}'].join('\n'),
+    fragmentShader: [
+      '#include <clipping_planes_pars_fragment>',
+      'uniform vec3 uColor; uniform float uBase; uniform float uRim; uniform float uTime; uniform float uGain;',
+      'varying vec3 vN; varying vec3 vV;',
+      'void main(){',
+      '  #include <clipping_planes_fragment>',
+      // フレネル：正面向きは薄く、視線と平行に近い輪郭ほど明るい
+      '  float d = abs(dot(normalize(vN), normalize(vV)));',
+      '  float rim = pow(1.0 - d, 2.4);',
+      // 横方向の細い走査線（ゆっくり下へ流れる）＋ 太い明るい帯
+      '  float scan = 0.82 + 0.18 * sin(gl_FragCoord.y * 1.3 - uTime * 6.0);',
+      '  float band = 1.0 + 0.25 * smoothstep(0.92, 1.0, sin(gl_FragCoord.y * 0.012 - uTime * 0.9));',
+      '  float a = (uBase + uRim * rim) * scan * band * uGain;',
+      '  if (a < 0.004) discard;',
+      '  gl_FragColor = vec4(uColor, clamp(a, 0.0, 1.0));',
+      '}'].join('\n'),
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true,
+    side: THREE.DoubleSide, clipping: true, clippingPlanes: [plane]
+  });
+}
+function buildHoloMats(){
+  holoMats = { heart: [], ghost: [] };
+  heartMeshes.forEach(function(mesh, i){
+    var pt = mesh.userData.part, valve = pt.cls.kind === 'valve';
+    var hsl = {}; pt.color.getHSL(hsl);
+    // 赤系（心筋・動脈）はシアン、青系（静脈）は少し青寄りの水色。弁は明るく
+    var col = valve ? 0xc8fbff : (hsl.h > 0.45 && hsl.h < 0.8 ? 0x5aa8ff : 0x3fe0ff);
+    holoMats.heart.push(makeHoloMat(col, valve ? 0.16 : 0.035, valve ? 0.9 : 0.75, clip3D));
+    holoMats.ghost.push(makeHoloMat(valve ? 0x9fefff : 0x2bb8d8, 0.0, valve ? 0.0 : 0.35, clip3DGhost));
+    mesh.userData.matOff = mesh.material;
+    ghostMeshes[i].userData.matOff = ghostMeshes[i].material;
+  });
+}
+function setHologram(on){
+  if (on && !holoMats) buildHoloMats();
+  if (!holoMats) return;
+  heartMeshes.forEach(function(mesh, i){
+    mesh.material = on ? holoMats.heart[i] : mesh.userData.matOff;
+    ghostMeshes[i].material = on ? holoMats.ghost[i] : ghostMeshes[i].userData.matOff;
+  });
+  scene3D.background = on ? HOLO_BG : HOLO_BG_OFF;
+}
+// 毎フレーム：走査線の時間、ゆっくりした拍動（明るさだけ）、わずかなちらつき
+function holoTick(now){
+  if (!settings.holo) return;
+  var t = now / 1000;
+  holoU.uTime.value = t;
+  var pulse = 0.88 + 0.12 * Math.pow(0.5 + 0.5 * Math.sin(t * 2 * Math.PI / 1.4), 2);   // 約 43 回/分
+  var flicker = 0.965 + 0.035 * Math.random() - (Math.random() < 0.012 ? 0.12 : 0);
+  holoU.uGain.value = pulse * flicker;
+}
 
 // 食道・胃（参考表示）
 (function(){
@@ -1465,6 +1541,7 @@ bindToggle('tgSmallCW', 'smallCW', function(){ lastStateKey = ''; });
   function bindStep(inp, k){ inp.addEventListener('change', function(){ var v = parseFloat(inp.value); if (v > 0) CLICK[k] = v; else inp.value = CLICK[k]; }); }
   bindStep(ia, 'ante'); bindStep(il, 'lr');
 })();
+bindToggle('tgHolo', 'holo', function(){ setHologram(settings.holo); });
 bindToggle('tgCut', 'cut'); bindToggle('tgGhost', 'ghost'); bindToggle('tgLabels', 'labels'); bindToggle('tgSpeckle', 'speckle'); bindToggle('tgLines', 'lines'); bindToggle('tgFan', 'fan');
 
 /* ---------- プリセット（ダイヤルが自動トゥイーン） ---------- */
@@ -1541,6 +1618,7 @@ function loop(now){
     echoMat.uniforms.uLines.value = settings.lines ? 1 : 0;
     renderEcho();
     if (controls) controls.update();
+    holoTick(now);
     renderViews();
     var key = state.depth.toFixed(2) + state.rot.toFixed(2) + state.ante.toFixed(2) + state.lr.toFixed(2) + state.omni.toFixed(2);
     if (key !== lastStateKey){ lastStateKey = key; updateHandleUI(); practiceUpdate(); }
