@@ -12,7 +12,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:"Hiragino Sans","Noto Sans JP","Segoe UI",system-ui,sans-serif;font-size:13px;overflow:hidden}
 #glcanvas{position:fixed;left:0;top:0;width:100vw;height:100vh;display:block;z-index:0;pointer-events:none}
-#app{position:relative;z-index:1;height:100vh;display:grid;grid-template-columns:310px 1fr 1fr;grid-template-rows:auto 1fr;gap:0}
+#app{position:relative;z-index:1;height:100vh;display:grid;grid-template-columns:310px var(--col3d,4fr) var(--colEcho,6fr);grid-template-rows:auto 1fr;gap:0}
 header{grid-column:1/4;display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);background:rgba(18,23,29,.96);flex-wrap:wrap}
 header h1{font-size:14px;margin:0 8px 0 0;font-weight:600;letter-spacing:.04em;white-space:nowrap}
 header h1 small{color:var(--muted);font-weight:400;margin-left:6px}
@@ -44,10 +44,16 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
 .view{position:relative;min-width:0;min-height:0;border-right:1px solid var(--line)}
 #view3d{touch-action:none}
 .vlabel{position:absolute;left:8px;top:6px;font-size:11px;color:var(--muted);pointer-events:none;letter-spacing:.05em}
+#view3d .vlabel{max-width:calc(100% - 230px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vbtns{position:absolute;right:8px;top:6px;display:flex;gap:4px}
 .vbtns button{background:rgba(23,29,37,.85);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer}
 #viewEcho{background:transparent}
 #echoOverlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+/* 3Dビューとエコー画面の境目（ドラッグで幅の比率を変える。保存はせず、開くたびに 4:6） */
+#splitter{position:absolute;left:-5px;top:0;bottom:0;width:10px;z-index:3;cursor:col-resize;touch-action:none}
+#splitter::after{content:"";position:absolute;left:4px;top:0;bottom:0;width:2px;background:transparent;transition:background .15s}
+#splitter:hover::after,#splitter.drag::after{background:var(--accent)}
+body.splitDrag{cursor:col-resize;user-select:none;-webkit-user-select:none}
 #err{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;background:#2a1215;border:1px solid var(--danger);color:#ffd7d7;padding:16px 20px;border-radius:8px;max-width:560px;display:none;line-height:1.6;white-space:pre-wrap}
 #loading{position:fixed;inset:0;z-index:15;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;background:var(--bg)}
 @media (max-width: 980px){
@@ -58,6 +64,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
   #viewEcho{height:62vw;min-height:240px;order:1}
   #view3d{height:62vw;min-height:240px;order:2;border-top:1px solid var(--line)}
   #handlePanel{order:3;border-right:none;border-top:1px solid var(--line)}
+  #splitter{display:none}
   #handleSvg{max-width:420px;margin:0 auto}
   header{order:0}
 }
@@ -159,6 +166,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
   </section>
 
   <section class="view" id="viewEcho">
+    <div id="splitter" title="ドラッグで3Dビューとエコー画面の幅を変える"></div>
     <canvas id="echoOverlay"></canvas>
     <div class="practice" id="practice">
       <button id="prLaunch" class="prLaunch">練習モード ▶</button>
@@ -1431,6 +1439,28 @@ function loop(now){
   }
 }
 window.addEventListener('scroll', function(){ overlayDirty = true; }, { passive: true });
+
+// 3Dビュー｜エコー画面の境目ドラッグ（3Dの割合を 20〜80% に制限）
+(function setupSplitter(){
+  var sp = document.getElementById('splitter'), app = document.getElementById('app');
+  if (!sp) return;
+  function move(e){
+    var a = view3dEl.getBoundingClientRect(), b = echoEl.getBoundingClientRect();
+    var f = clamp((e.clientX - a.left) / (b.right - a.left), 0.2, 0.8);
+    app.style.setProperty('--col3d', f.toFixed(4) + 'fr');
+    app.style.setProperty('--colEcho', (1 - f).toFixed(4) + 'fr');
+    overlayDirty = true;
+  }
+  function end(e){
+    sp.classList.remove('drag'); document.body.classList.remove('splitDrag');
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end);
+  }
+  sp.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    sp.classList.add('drag'); document.body.classList.add('splitDrag');
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
+  });
+})();
 
 try {
   applyPose(); renderSection(); dirty = false;
