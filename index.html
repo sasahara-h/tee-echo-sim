@@ -82,6 +82,7 @@ body.splitDrag{cursor:col-resize;user-select:none;-webkit-user-select:none}
   .presets::-webkit-scrollbar{display:none}
   .presets button{padding:5px 8px;font-size:11.5px}
   #fineBtn{display:block;flex:none}
+  .linkUI{display:none}
   #splitter{display:none}
   .vlabel{display:none}
   .vbtns{left:4px;right:4px;top:4px;flex-wrap:wrap;justify-content:flex-end}
@@ -138,6 +139,50 @@ body.splitDrag{cursor:col-resize;user-select:none;-webkit-user-select:none}
 .prPath{margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5}
 .prPath b{color:var(--accent2);font-weight:600}
 .prOpt select{margin-left:4px}
+/* ---------- 連動モード（スマホをコントローラーにする） ---------- */
+.linkUI{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.linkUI button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit}
+.linkUI button:hover{border-color:var(--accent)}
+.linkOn{color:#6fcf97;font-size:12px;font-weight:600;white-space:nowrap}
+.linkOn i{font-style:normal;animation:linkBlink 1.6s infinite}
+@keyframes linkBlink{50%{opacity:.35}}
+/* PC：連動中はハンドル操作パネルを隠し、3D＋エコーを全幅に */
+body.linked #handlePanel{display:none}
+body.linked #app{grid-template-columns:var(--col3d,4fr) var(--colEcho,6fr)}
+body.linked header{grid-column:1/-1}
+#linkModal{position:fixed;inset:0;z-index:40;background:rgba(5,8,11,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+#linkModal[hidden]{display:none}
+.linkBox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;width:min(440px,100%);max-height:100%;overflow-y:auto;line-height:1.6}
+.linkBox h2{font-size:15px;margin:0 0 8px}
+.linkQR{background:#fff;padding:10px;border-radius:6px;width:max-content;margin:10px auto}
+.linkQR[hidden]{display:none}
+.linkQR img,.linkQR canvas{display:block}
+.linkUrl{display:flex;gap:6px}
+.linkUrl input{flex:1;min-width:0;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px;font-family:ui-monospace,Consolas,monospace}
+.linkBox button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+.linkBox button:hover{border-color:var(--accent)}
+.linkWarn{margin-top:10px;padding:8px 10px;border-left:3px solid var(--accent2);background:rgba(246,173,85,.08);font-size:12px}
+.linkWarn[hidden]{display:none}
+.linkBox code{background:var(--panel2);padding:0 4px;border-radius:3px;font-size:11.5px}
+.linkMsg{margin-top:10px;font-size:12.5px;color:var(--muted)}
+.linkMsg.err{color:var(--danger)}
+.linkFoot{display:flex;justify-content:flex-end;margin-top:12px}
+/* スマホ側（?controller=）：ハンドルだけの画面。3D とエコーは描画しない */
+#ctlStatus{display:none}
+body.controller #glcanvas,body.controller #view3d,body.controller #viewEcho,body.controller #panelExtra,body.controller #fineBtn,body.controller .linkUI,body.controller header h1{display:none}
+body.controller #app{height:100vh;height:100dvh;grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr)}
+body.controller header{grid-column:1;grid-row:1;flex-wrap:nowrap;padding:4px 6px;gap:6px}
+body.controller .presets{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;min-width:0;flex:1}
+body.controller .presets::-webkit-scrollbar{display:none}
+body.controller #ctlStatus{display:block;grid-column:1;grid-row:2;padding:4px 8px;font-size:12px;line-height:1.5;background:var(--panel2);border-bottom:1px solid var(--line)}
+body.controller #handlePanel{grid-column:1;grid-row:3;border-right:none;overflow:hidden;padding:2px;display:flex;align-items:center;justify-content:center}
+body.controller #handleSvg{width:100%;height:100%;max-width:none;margin:0}
+#ctlConn{font-weight:600;margin-right:8px}
+#ctlConn.ok{color:#6fcf97}
+#ctlConn.ng{color:var(--danger)}
+#ctlNear{color:var(--accent)}
+#ctlNext{display:block;color:var(--accent2)}
+#ctlNext:empty{display:none}
 </style>
 </head>
 <body>
@@ -145,12 +190,36 @@ body.splitDrag{cursor:col-resize;user-select:none;-webkit-user-select:none}
 <div id="loading">読み込み中…</div>
 <div id="err"></div>
 
+<div id="linkModal" hidden>
+  <div class="linkBox" role="dialog" aria-labelledby="linkTitle">
+    <h2 id="linkTitle">📱 スマホで操作（連動モード）</h2>
+    <div>スマホのカメラで QR コードを読み取ると、スマホがプローブの操作部になります。</div>
+    <div class="linkQR" id="linkQR" hidden></div>
+    <div class="linkUrl"><input id="linkUrl" readonly aria-label="コントローラー用URL"><button id="linkCopy">コピー</button></div>
+    <div class="linkWarn" id="linkWarn" hidden>
+      いまこの画面を <b>localhost</b> で開いているため、スマホからはこの URL に届きません。<br>
+      PC の IP アドレス（例 <code>http://192.168.x.x:8000/</code>）で開き直してから、もう一度「📱 スマホで操作」を押してください。<br>
+      ・サーバーは <code>python -m http.server 8000 --bind 0.0.0.0</code> で起動<br>
+      ・IP の調べ方：コマンドプロンプトで <code>ipconfig</code> を実行し、Wi-Fi の「IPv4 アドレス」を見る<br>
+      ・スマホと PC は同じ Wi-Fi につなぐ（Windows のファイアウォールで python の通信を許可）
+    </div>
+    <div class="linkMsg" id="linkMsg">準備中…</div>
+    <div class="linkFoot"><button id="linkCancel">やめる（通常モードのまま）</button></div>
+  </div>
+</div>
+
 <div id="app">
   <header>
     <h1>TEE Simulator<small>経食道心エコー 操作トレーナー</small></h1>
     <div class="presets" id="presets"></div>
     <button id="fineBtn" aria-expanded="false">⚙ 詳細</button>
+    <div class="linkUI">
+      <button id="linkBtn" title="スマホをプローブ操作部にして PC と連動させる">📱 スマホで操作</button>
+      <span class="linkOn" id="linkOn" hidden>連動中 <i>●</i></span>
+      <button id="linkOff" hidden>通常モードに戻す</button>
+    </div>
   </header>
+  <div id="ctlStatus"><span id="ctlConn">接続準備中…</span><span id="ctlNear"></span><span id="ctlNext"></span></div>
 
   <aside id="handlePanel">
     <svg id="handleSvg" viewBox="0 0 300 552" aria-label="TEEプローブ操作部"></svg>
@@ -337,6 +406,9 @@ var SEC_H = 512;
 var SEC_W = Math.round(SEC_H * (FR.R - FR.L) / (FR.T - FR.B));
 
 var state = { depth: 102.2, rot: -24.2, ante: -32.2, lr: -4.2, omni: 5 };
+// ?controller=部屋ID で開いたとき＝スマホ側コントローラー（3D・エコーは描画しない）
+var CTRL_ROOM = (function(){ try { return new URLSearchParams(location.search).get('controller') || ''; } catch (e) { return ''; } })().replace(/[^0-9a-z]/gi, '');
+if (CTRL_ROOM) document.body.classList.add('controller');
 var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true, cut: true, fan: true, ghost: true,
   bigCW: true,    // true : 大ダイヤル時計回り（親指でシャフトから離す方向）＝前屈
   smallCW: true   // true : 小ダイヤル時計回り＝右屈
@@ -1421,7 +1493,7 @@ var presetBtns = [];
     b.appendChild(document.createTextNode(p.name));
     var sp = document.createElement('span'); sp.className = 'ang'; sp.textContent = Math.round(p.s.omni) + '°'; b.appendChild(sp);
     b.title = p.ja + '\n深度 ' + incisorCm(p.s.depth).toFixed(1) + 'cm / 回転 ' + p.s.rot + '° / 前後屈 ' + p.s.ante + '° / 左右屈 ' + p.s.lr + '° / ' + p.s.omni + '°';
-    b.addEventListener('click', function(){ startTween(p.s); });
+    b.addEventListener('click', function(){ if (CTRL_ROOM) linkSendPreset(p.id); else startTween(p.s); });
     host.appendChild(b);
     presetBtns.push({ id: p.id, el: b });
   });
@@ -1453,6 +1525,13 @@ function loop(now){
   requestAnimationFrame(loop);
   try {
     stepTween(now);
+    if (CTRL_ROOM){
+      // コントローラー：ハンドル表示と送信だけ
+      dirty = false;
+      var ck = state.depth.toFixed(2) + state.rot.toFixed(2) + state.ante.toFixed(2) + state.lr.toFixed(2) + state.omni.toFixed(2);
+      if (ck !== lastStateKey){ lastStateKey = ck; updateHandleUI(); }
+      return;
+    }
     if (dirty){ applyPose(); renderSection(); dirty = false; overlayDirty = true; }
     if (now - lastSeedT > 33){ seed = (seed + 1) % 97; lastSeedT = now; }
     echoMat.uniforms.uSeed.value = seed * 0.6180339 % 1 * 97.0;
@@ -1496,7 +1575,8 @@ window.addEventListener('scroll', function(){ overlayDirty = true; }, { passive:
 })();
 
 try {
-  applyPose(); renderSection(); dirty = false;
+  if (!CTRL_ROOM){ applyPose(); renderSection(); }
+  dirty = false;
   updateHandleUI();
 } catch (e) {
   showError('初期化に失敗しました：\n' + (e && e.message ? e.message : e));
@@ -1793,6 +1873,203 @@ function practiceUpdate(){
     });
   }
 }
+
+/* ======================================================================
+   10. 連動モード（スマホ＝コントローラー ⇄ PC＝表示）
+       WebRTC データチャネル（PeerJS 公開サーバーで仲介）。ライブラリは使うときだけ読み込む
+       スマホ→PC：{t:'state', depth, rot, ante, lr, omni} / {t:'preset', id} / {t:'hb'}
+       PC→スマホ：{t:'status', nearest, target, practiceNext, score, s:{…現在値}}（5回/秒）
+       ※ s は、PC 側でプリセットや練習の開始位置で動いた値をスマホのダイヤルに合わせるため
+   ====================================================================== */
+var LINK_LIBS = {
+  peer: 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
+  qr: 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+};
+var LINK_PREFIX = 'teesim-';
+var LINK_KEYS = ['depth', 'rot', 'ante', 'lr', 'omni'];
+var LINK = { peer: null, conn: null, room: '', linked: false, lastRx: 0, lastTx: 0, lastStatus: 0,
+             sentKey: '', localT: 0, retryTimer: 0 };
+
+function linkLoad(src){
+  return new Promise(function(ok, ng){
+    if (document.querySelector('script[data-link="' + src + '"]')) return ok();
+    var sc = document.createElement('script'); sc.src = src; sc.async = true; sc.setAttribute('data-link', src);
+    sc.onload = function(){ ok(); }; sc.onerror = function(){ sc.remove(); ng(new Error(src)); };
+    document.head.appendChild(sc);
+  });
+}
+function linkStateKey(){ return LINK_KEYS.map(function(k){ return state[k].toFixed(2); }).join(','); }
+function linkSend(msg){ var c = LINK.conn; if (c && c.open){ try { c.send(msg); LINK.lastTx = performance.now(); } catch (e) {} } }
+function linkSendPreset(id){ linkSend({ t: 'preset', id: id }); }
+
+// 33ms ごとに呼ぶ（送信の間引き・ハートビート・切断検知）。rAF だと裏タブで止まるため setInterval
+function linkTick(now){
+  if (!LINK.conn || !LINK.conn.open) return;
+  if (CTRL_ROOM){
+    var key = linkStateKey();
+    if (key !== LINK.sentKey){
+      LINK.localT = now;
+      if (now - LINK.lastTx >= 33){   // 最大30回/秒
+        var m = { t: 'state' }; LINK_KEYS.forEach(function(k){ m[k] = state[k]; });
+        linkSend(m); LINK.sentKey = key;
+      }
+    } else if (now - LINK.lastTx > 1000) linkSend({ t: 'hb' });
+    if (now - LINK.lastRx > 5000) ctlDrop('PC からの応答がありません');
+  } else {
+    if (now - LINK.lastStatus > 200){ LINK.lastStatus = now; linkSend(linkStatus()); }
+    if (now - LINK.lastRx > 5000){ var c = LINK.conn; LINK.conn = null; try { c.close(); } catch (e) {} linkLayout(false); }
+  }
+}
+
+/* ---------- PC 側 ---------- */
+function linkStatus(){
+  var np = nearestPreset(), st = { t: 'status', nearest: np ? np.p.name + '（' + np.p.ja + '）' : null, target: null, practiceNext: null, score: null, s: {} };
+  LINK_KEYS.forEach(function(k){ st.s[k] = state[k]; });
+  if (PRACTICE.active && PRACTICE.target){
+    st.target = PRACTICE.target.name;
+    st.score = Math.round(practiceScore());
+    if (PRACTICE.passed) st.practiceNext = '合格！ ' + PRACTICE.target.name + ' が出ています';
+    else { var nx = practiceSteps().filter(function(x){ return !x.ok; })[0]; st.practiceNext = '次の一手：' + (nx ? nx.move.replace(/^今から/, '') : '細かく調整'); }
+  }
+  return st;
+}
+function linkMsg(t, err){ var m = prEl('linkMsg'); m.textContent = t; m.classList.toggle('err', !!err); }
+function linkLayout(on){
+  LINK.linked = on;
+  document.body.classList.toggle('linked', on);
+  prEl('linkBtn').hidden = on; prEl('linkOn').hidden = !on; prEl('linkOff').hidden = !on;
+  if (on) prEl('linkModal').hidden = true;
+  overlayDirty = true;
+}
+function linkStop(){
+  if (LINK.peer){ try { LINK.peer.destroy(); } catch (e) {} }
+  LINK.peer = null; LINK.conn = null;
+  prEl('linkModal').hidden = true;
+  linkLayout(false);
+}
+function linkOpenPanel(){
+  prEl('linkModal').hidden = false;
+  var host = location.hostname;
+  prEl('linkWarn').hidden = !(host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1' || /\.localhost$/.test(host));
+  if (LINK.peer && !LINK.peer.destroyed) return;   // 待ち受け中ならそのまま QR を見せる
+  linkMsg('連動機能を読み込んでいます…');
+  prEl('linkQR').hidden = true; prEl('linkUrl').value = '';
+  Promise.all([linkLoad(LINK_LIBS.peer), linkLoad(LINK_LIBS.qr)]).then(linkHost, function(){
+    linkMsg('連動機能（PeerJS / QR コード）を読み込めませんでした。インターネット接続を確認してください。通常モードはそのまま使えます。', true);
+  });
+}
+function linkHost(){
+  if (typeof window.Peer !== 'function'){ linkMsg('PeerJS を初期化できませんでした。', true); return; }
+  LINK.room = Math.random().toString(36).slice(2, 8);
+  var peer = new window.Peer(LINK_PREFIX + LINK.room);
+  LINK.peer = peer;
+  peer.on('open', function(){
+    var base = location.href.split(/[?#]/)[0];
+    if (/\/$/.test(base)) base += 'index.html';
+    var url = base + '?controller=' + LINK.room;
+    prEl('linkUrl').value = url;
+    var qr = prEl('linkQR'); qr.innerHTML = '';
+    try { new window.QRCode(qr, { text: url, width: 200, height: 200, correctLevel: window.QRCode.CorrectLevel.M }); qr.hidden = false; }
+    catch (e) { qr.hidden = true; }
+    linkMsg('スマホの接続を待っています…（部屋 ' + LINK.room + '）');
+  });
+  peer.on('connection', function(c){
+    c.on('open', function(){
+      if (LINK.conn && LINK.conn !== c){ try { LINK.conn.close(); } catch (e) {} }   // 新しいスマホを優先
+      LINK.conn = c; LINK.lastRx = performance.now();
+      linkLayout(true);
+    });
+    c.on('data', function(d){ if (c !== LINK.conn) return; LINK.lastRx = performance.now(); linkOnData(d); });
+    c.on('close', function(){ if (c === LINK.conn){ LINK.conn = null; linkLayout(false); } });
+  });
+  peer.on('disconnected', function(){ if (LINK.peer === peer && !peer.destroyed){ try { peer.reconnect(); } catch (e) {} } });
+  peer.on('error', function(e){
+    if (LINK.peer !== peer) return;
+    if (e && e.type === 'unavailable-id'){ try { peer.destroy(); } catch (x) {} LINK.peer = null; linkHost(); return; }
+    linkMsg('接続エラー：' + (e && e.type ? e.type : e) + '（PeerJS の公開サーバーに届かない可能性があります）', true);
+  });
+}
+function linkOnData(d){
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 'state'){
+    cancelTween();
+    LINK_KEYS.forEach(function(k){ if (typeof d[k] === 'number') setParam(k, d[k]); });
+  } else if (d.t === 'preset'){
+    var p = prPreset(d.id); if (p) startTween(p.s);
+  }
+}
+
+/* ---------- スマホ側 ---------- */
+function ctlShow(conn, cls){ var e = prEl('ctlConn'); e.textContent = conn; e.className = cls || ''; }
+function ctlDrop(why){
+  var c = LINK.conn; LINK.conn = null;
+  if (c){ try { c.close(); } catch (e) {} }
+  ctlShow('切断（' + why + '）— 再接続します…', 'ng');
+  ctlRetry();
+}
+function ctlRetry(){
+  if (LINK.retryTimer) return;
+  LINK.retryTimer = setTimeout(function(){ LINK.retryTimer = 0; ctlConnect(); }, 2000);
+}
+function ctlConnect(){
+  var peer = LINK.peer;
+  if (!peer || peer.destroyed){ ctlStart(); return; }
+  if (peer.disconnected){ try { peer.reconnect(); } catch (e) {} ctlRetry(); return; }
+  if (prEl('ctlConn').className !== 'ng') ctlShow('接続中…');   // 再試行中は切断理由を出したままにする
+  var c = peer.connect(LINK_PREFIX + CTRL_ROOM, { reliable: true });
+  c.on('open', function(){
+    // つながった直後は送らず、まず PC の値にダイヤルを合わせる
+    LINK.conn = c; LINK.lastRx = performance.now(); LINK.sentKey = linkStateKey(); LINK.localT = 0;
+    ctlShow('接続中 ●', 'ok');
+  });
+  c.on('data', function(d){ if (c !== LINK.conn) return; LINK.lastRx = performance.now(); ctlOnData(d); });
+  c.on('close', function(){ if (c === LINK.conn) ctlDrop('PC 側が閉じました'); });
+  c.on('error', function(){ if (c === LINK.conn) ctlDrop('通信エラー'); });
+}
+function ctlStart(){
+  ctlShow('連動機能を読み込んでいます…');
+  linkLoad(LINK_LIBS.peer).then(function(){
+    var peer = new window.Peer();
+    LINK.peer = peer;
+    peer.on('open', ctlConnect);
+    peer.on('disconnected', function(){ if (!peer.destroyed){ try { peer.reconnect(); } catch (e) {} } });
+    peer.on('error', function(e){
+      var t = e && e.type;
+      if (t === 'peer-unavailable') ctlShow('PC が見つかりません（PC で「📱 スマホで操作」を開いたままにしてください）— 再試行します…', 'ng');
+      else ctlShow('接続エラー：' + t + ' — 再試行します…', 'ng');
+      if (t === 'network' || t === 'server-error' || t === 'socket-error'){ try { peer.destroy(); } catch (x) {} LINK.peer = null; }
+      ctlRetry();
+    });
+  }, function(){
+    ctlShow('連動機能（PeerJS）を読み込めませんでした。インターネット接続を確認してください', 'ng');
+    setTimeout(ctlStart, 5000);
+  });
+}
+function ctlOnData(d){
+  if (!d || d.t !== 'status') return;
+  setText('ctlNear', d.target ? '練習中：目標 ' + d.target + (typeof d.score === 'number' ? '（一致度 ' + d.score + '）' : '') : (d.nearest ? '≈ ' + d.nearest : '標準断面から外れています'));
+  setText('ctlNext', d.practiceNext || '');
+  // 操作していない間は PC 側の値（プリセット・答えを見る など）にダイヤルを合わせる
+  if (d.s && performance.now() - LINK.localT > 400){
+    cancelTween();
+    LINK_KEYS.forEach(function(k){ if (typeof d.s[k] === 'number') setParam(k, d.s[k]); });
+    LINK.sentKey = linkStateKey();
+  }
+}
+
+(function setupLink(){
+  setInterval(function(){ try { linkTick(performance.now()); } catch (e) {} }, 33);
+  if (CTRL_ROOM){ ctlStart(); return; }
+  prEl('linkBtn').addEventListener('click', linkOpenPanel);
+  prEl('linkOff').addEventListener('click', linkStop);
+  prEl('linkCancel').addEventListener('click', linkStop);
+  prEl('linkCopy').addEventListener('click', function(){
+    var inp = prEl('linkUrl'); if (!inp.value) return;
+    var done = function(){ prEl('linkCopy').textContent = 'コピーしました'; setTimeout(function(){ prEl('linkCopy').textContent = 'コピー'; }, 1500); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(inp.value).then(done, function(){});
+    else { inp.select(); try { document.execCommand('copy'); done(); } catch (e) {} }
+  });
+})();
 
 window.TEESIM = { state: state, settings: settings, setParam: setParam, presets: PRESETS, goPreset: function(id){ var p = PRESETS.filter(function(x){ return x.id === id; })[0]; if (p){ cancelTween(); ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, p.s[k]); }); } } };
 })();

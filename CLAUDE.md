@@ -30,6 +30,21 @@
 - TG mid SAX
 - UE 大動脈弓 LAX
 
+## 使用ライブラリ
+
+すべて CDN から読み込み、バージョンを固定している。
+
+- Three.js r128（cdnjs）と OrbitControls（jsdelivr、three@0.128.0）：3D・エコー描画
+- PeerJS 1.5.4（jsdelivr）：連動モードの WebRTC 接続。仲介は PeerJS の公開サーバー
+- qrcodejs 1.0.0（cdnjs）：連動モードのコントローラー用 URL の QR コード
+
+PeerJS と qrcodejs は、連動モードを使うとき（「📱 スマホで操作」を押したとき、または `?controller=` で開いたとき）だけ読み込む。読み込めなくても通常モードは動く。
+
+## 連動モード
+
+- スマホから開けるように、サーバーは `python -m http.server 8000 --bind 0.0.0.0` で起動し、PC も IP アドレス（`http://192.168.x.x:8000/`）で開く
+- スマホ側は `index.html?controller=部屋ID`。3D とエコーは描画せず、ハンドル操作だけを送る
+
 ## 生成ファイル
 
 - `source/` の生成ファイル（`bodyparts3d.js`、`bodyparts3d_volume.js`）はコミットしない
