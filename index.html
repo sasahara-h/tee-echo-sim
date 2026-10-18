@@ -90,6 +90,9 @@ body.splitDrag{cursor:col-resize;user-select:none;-webkit-user-select:none}
 .practice button{cursor:pointer}
 .practice button:hover{border-color:var(--accent)}
 .practice button.primary{border-color:var(--accent);color:#bff5ef}
+/* 狭い画面（縦並びレイアウト）では左パネル内（コントローラーの下）に普通のパネルとして置く */
+#handlePanel .practice{position:static;width:auto;max-width:none;margin-top:8px;pointer-events:auto;display:block}
+#handlePanel .prCard,#handlePanel .prCard.min{width:100%;max-height:none;overflow:visible;background:var(--panel2);border:1px solid var(--line);border-radius:6px;box-shadow:none;text-shadow:none}
 .prGoal{margin-top:6px;font-size:13px;font-weight:600}
 .prGoal small{display:block;color:var(--muted);font-weight:400;font-size:11px}
 .prMeter{position:relative;height:8px;background:rgba(18,23,29,.7);border:1px solid var(--line);border-radius:4px;margin-top:6px;overflow:hidden}
@@ -1583,6 +1586,18 @@ function prChain(id){ var out = [], c = prCourse(id), guard = 0; while (c && gua
   });
 })();
 
+// 練習カードの置き場所：広い画面はエコー左上のフローティング、980px以下（縦並び）は左パネルの読み取り値の下
+(function placePractice(){
+  var mq = window.matchMedia('(max-width: 980px)'), card = prEl('practice');
+  function place(){
+    var dest = mq.matches ? prEl('handlePanel') : prEl('viewEcho');
+    var before = mq.matches ? prEl('fine') : null;
+    if (card.parentNode !== dest || card.nextSibling !== before) dest.insertBefore(card, before);
+  }
+  place();
+  if (mq.addEventListener) mq.addEventListener('change', place); else mq.addListener(place);
+  window.addEventListener('resize', place);
+})();
 // カードを畳む（目標名＋次の一手の1行だけにする）／広げる
 function prCardMin(on){
   prEl('prCard').classList.toggle('min', on);
