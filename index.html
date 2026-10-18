@@ -61,29 +61,44 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
   #handleSvg{max-width:420px;margin:0 auto}
   header{order:0}
 }
-.practice{margin-top:8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+/* 練習モード：エコー画面左上（扇の左の空き）に重ねるフローティングカード。背景は半透明でエコー像が透ける */
+.practice{position:absolute;left:8px;top:42px;bottom:30px;z-index:2;width:clamp(200px,35%,320px);max-width:calc(100% - 16px);pointer-events:none;display:flex;flex-direction:column;align-items:flex-start}
+.practice > *{pointer-events:auto}
+.prLaunch{background:rgba(18,23,29,.7)!important;font-size:11.5px!important;padding:3px 9px!important}
+.prCard{width:100%;max-height:100%;overflow-y:auto;background:rgba(18,23,29,.58);border:1px solid rgba(79,209,197,.35);border-radius:8px;padding:6px 8px;box-shadow:0 4px 14px rgba(0,0,0,.35);text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.practice.min{width:auto;max-width:calc(100% - 100px)}
+.prCard.min{overflow:hidden;width:auto}
+.prCardHead{display:flex;align-items:center;gap:6px;min-width:0}
+.prCardHead b{font-size:12.5px;white-space:nowrap;flex:none}
+.prMini{flex:1;min-width:0;font-size:11.5px;color:var(--accent2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prMini.pass{color:var(--accent)}
+.prCard:not(.min) .prMini{visibility:hidden}
+.prCard.min #prBody,.prCard.min #prSetup{display:none}
+.prCardHead button{flex:none;width:22px;height:20px;padding:0!important;line-height:1;font-size:13px!important}
+.prSetup{margin-top:6px}
+.prBody + .prSetup{border-top:1px solid rgba(38,48,59,.8);padding-top:6px}
 .practice .prHead{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.practice .prHead b{font-size:12.5px;margin-right:auto}
-.practice select,.practice button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:12px;padding:3px 6px;font-family:inherit}
+.practice select,.practice button{background:rgba(18,23,29,.75);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:12px;padding:3px 6px;font-family:inherit;text-shadow:none}
+.practice select{max-width:100%;min-width:0;flex:1}
 .practice button{cursor:pointer}
 .practice button:hover{border-color:var(--accent)}
 .practice button.primary{border-color:var(--accent);color:#bff5ef}
 .prGoal{margin-top:6px;font-size:13px;font-weight:600}
 .prGoal small{display:block;color:var(--muted);font-weight:400;font-size:11px}
-.prMeter{position:relative;height:8px;background:var(--panel);border:1px solid var(--line);border-radius:4px;margin-top:6px;overflow:hidden}
+.prMeter{position:relative;height:8px;background:rgba(18,23,29,.7);border:1px solid var(--line);border-radius:4px;margin-top:6px;overflow:hidden}
 .prMeter div{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent2);transition:width .15s}
 .prMeter.pass div{background:var(--accent)}
 .prScore{font-size:11px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
-.prNext{margin-top:6px;padding:6px 8px;border-radius:5px;background:#1d2a33;border-left:3px solid var(--accent2);font-size:13px;line-height:1.5}
-.prNext.pass{background:#173b3a;border-left-color:var(--accent);color:#bff5ef}
-.prSteps{margin:6px 0 0;padding-left:18px;font-size:11.5px;line-height:1.6;color:var(--muted)}
+.prNext{margin-top:6px;padding:6px 8px;border-radius:5px;background:rgba(29,42,51,.7);border-left:3px solid var(--accent2);font-size:13px;line-height:1.5}
+.prNext.pass{background:rgba(23,59,58,.75);border-left-color:var(--accent);color:#bff5ef}
+.prSteps{margin:6px 0 0;padding-left:18px;font-size:11.5px;line-height:1.6;color:#a9b6c3}
 .prSteps li.done{color:#6fcf97}
 .prSteps li.now{color:var(--text);font-weight:600}
 .prStepsHead{margin-top:6px;font-size:11px;color:var(--muted)}
 .prStepsHead + .prSteps{margin-top:2px}
 .prSteps.ref{color:var(--muted);opacity:.75}
 .prBtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.prInfo{margin-top:6px;font-size:11.5px;line-height:1.6;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:5px 7px}
+.prInfo{margin-top:6px;font-size:11.5px;line-height:1.6;color:var(--text);background:rgba(18,23,29,.7);border:1px solid var(--line);border-radius:5px;padding:5px 7px}
 .prOpt{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer}
 .prPath{margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5}
 .prPath b{color:var(--accent2);font-weight:600}
@@ -109,36 +124,6 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
       <div class="ro"><div class="k">前屈 / 後屈（大ダイヤル）</div><div class="v" id="roAnte">–</div></div>
       <div class="ro"><div class="k">左屈 / 右屈（小ダイヤル）</div><div class="v" id="roLR">–</div></div>
       <div class="ro" style="grid-column:1/3"><div class="k">オムニプレーン角 / 近い標準断面</div><div class="v" id="roOmni">–</div></div>
-    </div>
-    <div class="practice" id="practice">
-      <div class="prHead">
-        <b>練習モード</b>
-        <select id="prTarget" aria-label="練習する断面"></select>
-        <button id="prStart" class="primary">開始</button>
-      </div>
-      <label class="prOpt">開始位置
-        <select id="prFrom" aria-label="開始位置">
-          <option value="course" selected>コースどおり（ひとつ前の断面から）</option>
-          <option value="neutral">上部食道・ニュートラルから</option>
-          <option value="here">今のプローブ位置から</option>
-        </select>
-      </label>
-      <div id="prBody" hidden>
-        <div class="prPath" id="prPath"></div>
-        <div class="prGoal" id="prGoal"></div>
-        <div class="prMeter" id="prMeter"><div id="prBar"></div></div>
-        <div class="prScore" id="prScore"></div>
-        <div class="prNext" id="prNext"></div>
-        <div class="prStepsHead" id="prStepsHead" hidden>模範の操作との差（参考）</div>
-        <ol class="prSteps" id="prSteps"></ol>
-        <div class="prBtns">
-          <button id="prHint">ヒント</button>
-          <button id="prShow">答えを見る</button>
-          <button id="prNextView" class="primary" hidden>次の断面へ</button>
-          <button id="prStop">終了</button>
-        </div>
-        <div class="prInfo" id="prInfo" hidden></div>
-      </div>
     </div>
     <details id="fine">
       <summary>微調整スライダー・表示設定</summary>
@@ -175,6 +160,46 @@ details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:3px 0}
 
   <section class="view" id="viewEcho">
     <canvas id="echoOverlay"></canvas>
+    <div class="practice" id="practice">
+      <button id="prLaunch" class="prLaunch">練習モード ▶</button>
+      <div class="prCard" id="prCard" hidden>
+        <div class="prCardHead">
+          <b id="prTitle">練習モード</b>
+          <span class="prMini" id="prMini"></span>
+          <button id="prMin" title="畳む" aria-label="畳む" hidden>−</button>
+          <button id="prClose" title="閉じる" aria-label="閉じる">×</button>
+        </div>
+        <div class="prBody" id="prBody" hidden>
+          <div class="prPath" id="prPath"></div>
+          <div class="prGoal" id="prGoal"></div>
+          <div class="prMeter" id="prMeter"><div id="prBar"></div></div>
+          <div class="prScore" id="prScore"></div>
+          <div class="prNext" id="prNext"></div>
+          <div class="prStepsHead" id="prStepsHead" hidden>模範の操作との差（参考）</div>
+          <ol class="prSteps" id="prSteps"></ol>
+          <div class="prBtns">
+            <button id="prHint">ヒント</button>
+            <button id="prShow">答えを見る</button>
+            <button id="prNextView" class="primary" hidden>次の断面へ</button>
+            <button id="prStop">終了</button>
+          </div>
+          <div class="prInfo" id="prInfo" hidden></div>
+        </div>
+        <div class="prSetup" id="prSetup">
+          <div class="prHead">
+            <select id="prTarget" aria-label="練習する断面"></select>
+            <button id="prStart" class="primary">開始</button>
+          </div>
+          <label class="prOpt">開始位置
+            <select id="prFrom" aria-label="開始位置">
+              <option value="course" selected>コースどおり（ひとつ前の断面から）</option>
+              <option value="neutral">上部食道・ニュートラルから</option>
+              <option value="here">今のプローブ位置から</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
   </section>
 </div>
 
@@ -1498,6 +1523,10 @@ function prChain(id){ var out = [], c = prCourse(id), guard = 0; while (c && gua
     practiceBegin(next.id, true);
   });
   prEl('prStop').addEventListener('click', practiceStop);
+  // 未開始：小さな「練習モード ▶」だけ → 押すと断面選択つきのカードを開く
+  prEl('prLaunch').addEventListener('click', function(){ prEl('prLaunch').hidden = true; prEl('prCard').hidden = false; prCardMin(false); });
+  prEl('prClose').addEventListener('click', function(){ if (!PRACTICE.active){ prEl('prCard').hidden = true; prEl('prLaunch').hidden = false; } });
+  prEl('prMin').addEventListener('click', function(){ prCardMin(!prEl('prCard').classList.contains('min')); });
   prEl('prShow').addEventListener('click', function(){ if (PRACTICE.active && PRACTICE.target){ PRACTICE.revealed = true; startTween(PRACTICE.target.s); } });
   prEl('prHint').addEventListener('click', function(){
     var box = prEl('prInfo'); if (!box || !PRACTICE.target) return;
@@ -1509,6 +1538,12 @@ function prChain(id){ var out = [], c = prCourse(id), guard = 0; while (c && gua
   });
 })();
 
+// カードを畳む（目標名＋次の一手の1行だけにする）／広げる
+function prCardMin(on){
+  prEl('prCard').classList.toggle('min', on);
+  prEl('practice').classList.toggle('min', on);
+  var b = prEl('prMin'); b.textContent = on ? '＋' : '−'; b.title = on ? '広げる' : '畳む'; b.setAttribute('aria-label', b.title);
+}
 // keepPosition=true のとき（「次の断面へ」）は、合格した位置からそのまま続ける
 function practiceBegin(id, keepPosition){
   var target = prPreset(id), c = prCourse(id);
@@ -1526,6 +1561,9 @@ function practiceBegin(id, keepPosition){
   }
   if (startState){ ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, startState[k]); }); }
   prEl('prBody').hidden = false;
+  prEl('prLaunch').hidden = true; prEl('prCard').hidden = false;
+  prEl('prMin').hidden = false; prEl('prClose').hidden = true;
+  prEl('prTitle').textContent = target.name;
   prEl('prInfo').hidden = true;
   prEl('prNextView').hidden = true;
   prEl('prStart').textContent = 'やり直す';
@@ -1552,6 +1590,10 @@ function practiceStop(){
   PRACTICE.active = false; PRACTICE.target = null;
   prEl('prBody').hidden = true;
   prEl('prStart').textContent = '開始';
+  prCardMin(false);
+  prEl('prCard').hidden = true; prEl('prLaunch').hidden = false;
+  prEl('prMin').hidden = true; prEl('prClose').hidden = false;
+  prEl('prTitle').textContent = '練習モード';
   overlayDirty = true; lastStateKey = '';
 }
 
@@ -1624,6 +1666,11 @@ function practiceUpdate(){
     box.classList.toggle('pass', PRACTICE.passed);
     if (PRACTICE.passed) box.textContent = '合格！ ' + PRACTICE.target.name + ' が出ています' + (PRACTICE.revealed ? '（答えを見て到達）' : '（' + (PRACTICE.passSec || 0).toFixed(0) + ' 秒）') + '。「ヒント」で見えるべき構造を確認しよう。';
     else box.textContent = '次の一手：' + (next ? next.text : '細かく調整して一致度を上げる');
+  }
+  var mini = prEl('prMini');
+  if (mini){
+    mini.classList.toggle('pass', PRACTICE.passed);
+    mini.textContent = PRACTICE.passed ? '合格！' : (next ? next.move.replace(/^今から/, '') : '細かく調整');
   }
   var nb = prEl('prNextView'); if (nb) nb.hidden = !PRACTICE.passed;
   // 合格後は「次の一手」を促さず、模範との差を参考として灰色で出す
