@@ -7,6 +7,13 @@
 - Three.js r128 を使い、`index.html` の1ファイルで完結している
 - `python -m http.server 8000` で配信し、http://localhost:8000/ を開く
 
+## 公開URL
+
+- https://sasahara-h.github.io/tee-echo-sim/ （GitHub Pages、リポジトリ https://github.com/sasahara-h/tee-echo-sim の master ブランチのルート）
+- 更新するときは master に push するだけで反映される（ビルドは数分かかる。混んでいると 20 分ほど待つこともある）
+- 公開リポジトリなので、Wi-Fi のパスワード・APIキー・個人情報などはコミットしない
+- コミットのメールアドレスは GitHub の非公開アドレス（`344892775+sasahara-h@users.noreply.github.com`、このリポジトリの `git config user.email`）にしてある
+
 ## 座標系と操作の符号
 
 - 座標系は BodyParts3D 準拠：+X が患者の左、+Y が背側、+Z が頭側（単位は mm）
@@ -42,7 +49,8 @@ PeerJS と qrcodejs は、連動モードを使うとき（「📱 スマホで�
 
 ## 連動モード
 
-- スマホから開けるように、サーバーは `python -m http.server 8000 --bind 0.0.0.0` で起動し、PC も IP アドレス（`http://192.168.x.x:8000/`）で開く
+- 公開URL で開けば、そのまま https のコントローラー用 QR が出る（ローカルサーバー不要）
+- 手元で試すときは、スマホから開けるように `python -m http.server 8000 --bind 0.0.0.0` で起動し、PC も IP アドレス（`http://192.168.x.x:8000/`）で開く
 - スマホ側は `index.html?controller=部屋ID`。3D とエコーは描画せず、ハンドル操作だけを送る
 
 ## 生成ファイル
