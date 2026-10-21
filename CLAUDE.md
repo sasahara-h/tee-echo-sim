@@ -62,3 +62,4 @@ PeerJS と qrcodejs は、連動モードを使うとき（「📱 スマホで�
 
 - `index.html` を変更したら、ブラウザで確認してからコミットする
 - 別の Claude（claude.ai 側）が同じファイルを編集することがある。編集前に `git status` で未コミットの変更がないか確認する
+- ハードウェア（模型ハンドル）の経緯と決定事項は docs/handoff-route1-sensor-nav.md を読むこと
