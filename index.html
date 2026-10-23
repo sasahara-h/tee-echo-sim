@@ -217,7 +217,7 @@ body.controller #handleSvg{position:absolute;top:2px;left:2px;right:2px;bottom:2
     <button id="fineBtn" aria-expanded="false">⚙ 詳細</button>
     <div class="linkUI">
       <button id="linkBtn" title="スマホをプローブ操作部にして PC と連動させる">📱 スマホで操作</button>
-      <span class="linkOn" id="linkOn" hidden>連動中 <i>●</i></span>
+      <span class="linkOn" id="linkOn" hidden>連動中<span id="linkPath"></span> <i>●</i></span>
       <button id="linkOff" hidden>通常モードに戻す</button>
     </div>
   </header>
@@ -314,12 +314,9 @@ body.controller #handleSvg{position:absolute;top:2px;left:2px;right:2px;bottom:2
   </section>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="bodyparts3d.js"></script>
 <script>
-// PV弁尖を主肺動脈起始部へ寄せる補正（メッシュ生成より前に実行）
-(function fixPV() {
+// PV弁尖を主肺動脈起始部へ寄せる補正（メッシュ生成より前に、末尾の読み込み処理から呼ぶ）
+function fixPV() {
   try {
     const P = globalThis.BP3D && globalThis.BP3D.parts;
     if (!Array.isArray(P)) { console.warn('fixPV: BP3D.parts なし'); return; }
@@ -361,10 +358,11 @@ body.controller #handleSvg{position:absolute;top:2px;left:2px;right:2px;bottom:2
   } catch (e) {
     console.warn('fixPV failed:', e);
   }
-})();
+}
 </script>
 <script>
-(function(){
+// 本体。末尾の読み込み処理から呼ぶ（ctrlRoom：?controller=部屋ID で開いたスマホ側コントローラーの部屋 ID。PC 側は ''）
+function teesimMain(ctrlRoom){
 'use strict';
 
 /* ======================================================================
@@ -379,13 +377,16 @@ function showError(msg){
   if (loadingBox) loadingBox.style.display = 'none';
   if (errBox){ errBox.textContent = msg; errBox.style.display = 'block'; }
 }
-if (typeof window.THREE === 'undefined'){
+// スマホ側コントローラーは 3D とエコーを描画しないので、Three.js と心臓データを読み込まない
+var CTRL_ROOM = ctrlRoom;
+if (CTRL_ROOM) document.body.classList.add('controller');
+if (!CTRL_ROOM && typeof window.THREE === 'undefined'){
   showError('Three.js (r128) を読み込めませんでした。\nインターネット接続（CDN）を確認してください。');
   return;
 }
 var THREE = window.THREE;
 var BP3D = (typeof globalThis !== 'undefined' && globalThis.BP3D) ? globalThis.BP3D : window.BP3D;
-if (!BP3D || !Array.isArray(BP3D.parts) || BP3D.parts.length === 0){
+if (!CTRL_ROOM && (!BP3D || !Array.isArray(BP3D.parts) || BP3D.parts.length === 0)){
   showError('bodyparts3d.js が見つからないか、内容が空です。\nindex.html と同じフォルダに bodyparts3d.js を置き、\n  python -m http.server 8000\nで配信して http://localhost:8000/ を開いてください。');
   return;
 }
@@ -408,9 +409,6 @@ var SEC_H = 512;
 var SEC_W = Math.round(SEC_H * (FR.R - FR.L) / (FR.T - FR.B));
 
 var state = { depth: 102.2, rot: -24.2, ante: -32.2, lr: -4.2, omni: 5 };
-// ?controller=部屋ID で開いたとき＝スマホ側コントローラー（3D・エコーは描画しない）
-var CTRL_ROOM = (function(){ try { return new URLSearchParams(location.search).get('controller') || ''; } catch (e) { return ''; } })().replace(/[^0-9a-z]/gi, '');
-if (CTRL_ROOM) document.body.classList.add('controller');
 var settings = { range: 140, gain: 1.0, speckle: true, lines: true, labels: true, cut: true, fan: true, ghost: true,
   bigCW: true,    // true : 大ダイヤル時計回り（親指でシャフトから離す方向）＝前屈
   smallCW: true   // true : 小ダイヤル時計回り＝右屈
@@ -539,8 +537,9 @@ function makeProbeModel(){
   return { curve:curve, length:L, frameAt:frameAt, pose:pose, probeCenterline:probeCenterline, GE:GE, BEND:BEND };
 }
 
-var probe = makeProbeModel();
-LIMITS.depth = [0, Math.floor(probe.length) - 2];
+// スマホ側コントローラーでは作らない（挿入深度の上限は PC から受け取る）
+var probe = CTRL_ROOM ? null : makeProbeModel();
+if (probe) LIMITS.depth = [0, Math.floor(probe.length) - 2];
 
 function depthRegion(s){
   if (s < 70) return 'UE（上部食道）';
@@ -564,7 +563,7 @@ function classify(part){
 }
 
 var parts = [];
-(function buildParts(){
+if (!CTRL_ROOM) (function buildParts(){
   BP3D.parts.forEach(function(p, idx){
     try {
       if (!p || !Array.isArray(p.vertices) || !Array.isArray(p.faces)) return;
@@ -593,10 +592,10 @@ var parts = [];
     } catch (e) { console.warn('part skipped', idx, e); }
   });
 })();
-if (parts.length === 0){ showError('心臓パーツのメッシュを1つも構築できませんでした（bodyparts3d.js の形式を確認してください）。'); return; }
+if (!CTRL_ROOM && parts.length === 0){ showError('心臓パーツのメッシュを1つも構築できませんでした（bodyparts3d.js の形式を確認してください）。'); return; }
 
 // ランドマーク（エコー上のラベル用）
-var LM = (function(){
+var LM = CTRL_ROOM ? [] : (function(){
   function centroidOf(re){
     var c = new THREE.Vector3(), n = 0;
     parts.forEach(function(pt){ if (re.test(pt.fileId)){ var v = pt.verts; for (var i = 0; i < v.length; i += 3){ c.x += v[i]; c.y += v[i+1]; c.z += v[i+2]; n++; } } });
@@ -623,6 +622,8 @@ var LM = (function(){
 /* ======================================================================
    4. レンダラ（単一WebGLコンテキスト / シザーで3D・エコーを描き分け）
    ====================================================================== */
+// ここから「scene3D.add(fanGroup)」までは PC 側だけ（スマホ側コントローラーは WebGL を使わない）
+if (!CTRL_ROOM){
 var canvas = document.getElementById('glcanvas');
 var renderer;
 try {
@@ -930,6 +931,7 @@ var fanEdgeMat = new THREE.LineBasicMaterial({ color: 0x4fd1c5, transparent: tru
 var fanEdge = new THREE.Line(new THREE.BufferGeometry(), fanEdgeMat); fanEdge.renderOrder = 6;
 fanGroup.add(fanMesh); fanGroup.add(fanEdge);
 scene3D.add(fanGroup);
+}   // ここまで PC 側だけ
 var fanBuiltFor = -1;
 function buildFan(D){
   if (fanBuiltFor === D) return;
@@ -957,8 +959,8 @@ function buildFan(D){
    5. 姿勢の適用
    ====================================================================== */
 var curPose = null;
-var basisM = new THREE.Matrix4();
-var tmpV = new THREE.Vector3();
+var basisM = CTRL_ROOM ? null : new THREE.Matrix4();
+var tmpV = CTRL_ROOM ? null : new THREE.Vector3();
 
 function applyPose(){
   var P = probe.pose(state);
@@ -1889,8 +1891,40 @@ var LINK_LIBS = {
 };
 var LINK_PREFIX = 'teesim-';
 var LINK_KEYS = ['depth', 'rot', 'ante', 'lr', 'omni'];
+// 中継（TURN）サーバー：Metered（https://www.metered.ca/）の無料プラン（月 500MB。連動モードの通信は 1 時間で約 20MB）
+//   固定のユーザー名・パスワード（ダッシュボードの iceServers をそのまま貼る）。空の配列なら中継なし（直接接続だけ）
+//   公開ページなので誰でも見られる。悪用されても、無料枠を使い切られてその月の中継が止まるだけ
+var LINK_TURN = [
+  {
+    urls: "stun:stun.relay.metered.ca:80",
+  },
+  {
+    urls: "turn:global.relay.metered.ca:80",
+    username: "447db7f9a55384db8c5114e6",
+    credential: "ladD3oeo2ewmLKem",
+  },
+  {
+    urls: "turn:global.relay.metered.ca:80?transport=tcp",
+    username: "447db7f9a55384db8c5114e6",
+    credential: "ladD3oeo2ewmLKem",
+  },
+  {
+    urls: "turn:global.relay.metered.ca:443",
+    username: "447db7f9a55384db8c5114e6",
+    credential: "ladD3oeo2ewmLKem",
+  },
+  {
+    urls: "turns:global.relay.metered.ca:443?transport=tcp",
+    username: "447db7f9a55384db8c5114e6",
+    credential: "ladD3oeo2ewmLKem",
+  },
+];
+var LINK_STUN = [{ urls: 'stun:stun.l.google.com:19302' }];
+var LINK_DIRECT_MS = 3000;     // PC が見つかってから直接接続を試す時間。過ぎたら中継だけで接続し直す
+var LINK_WATCHDOG_MS = 10000;  // この時間つながらなければ最初からやり直す
 var LINK = { peer: null, conn: null, room: '', linked: false, lastRx: 0, lastTx: 0, lastStatus: 0,
-             sentKey: '', localT: 0, retryTimer: 0 };
+             sentKey: '', localT: 0, retryTimer: 0,
+             hasTurn: false, relay: false, gen: 0, tries: 0, directTimer: 0, watchdog: 0 };
 
 function linkLoad(src){
   return new Promise(function(ok, ng){
@@ -1899,6 +1933,23 @@ function linkLoad(src){
     sc.onload = function(){ ok(); }; sc.onerror = function(){ sc.remove(); ng(new Error(src)); };
     document.head.appendChild(sc);
   });
+}
+// STUN＋TURN の一覧
+function linkIce(){ return LINK_STUN.concat(LINK_TURN); }
+function linkHasTurn(ice){ return ice.some(function(s){ return /^turns?:/.test(String(s.urls)); }); }
+function linkPeerOpts(ice, relay){ return { config: { iceServers: ice, iceTransportPolicy: relay ? 'relay' : 'all' } }; }
+// つながった経路：'直接' か '中継'（調べられなければ ''）
+function linkPath(c){
+  var pc = c && c.peerConnection;
+  if (!pc || !pc.getStats) return Promise.resolve('');
+  return pc.getStats().then(function(rep){
+    var pair = null;
+    rep.forEach(function(s){ if (s.type === 'transport' && s.selectedCandidatePairId) pair = rep.get(s.selectedCandidatePairId); });
+    if (!pair) rep.forEach(function(s){ if (!pair && s.type === 'candidate-pair' && (s.selected || (s.nominated && s.state === 'succeeded'))) pair = s; });   // Firefox
+    if (!pair) return '';
+    var lc = rep.get(pair.localCandidateId), rc = rep.get(pair.remoteCandidateId);
+    return ((lc && lc.candidateType === 'relay') || (rc && rc.candidateType === 'relay')) ? '中継' : '直接';
+  }, function(){ return ''; });
 }
 function linkStateKey(){ return LINK_KEYS.map(function(k){ return state[k].toFixed(2); }).join(','); }
 function linkSend(msg){ var c = LINK.conn; if (c && c.open){ try { c.send(msg); LINK.lastTx = performance.now(); } catch (e) {} } }
@@ -1925,7 +1976,7 @@ function linkTick(now){
 
 /* ---------- PC 側 ---------- */
 function linkStatus(){
-  var np = nearestPreset(), st = { t: 'status', nearest: np ? np.p.name + '（' + np.p.ja + '）' : null, target: null, practiceNext: null, score: null, s: {} };
+  var np = nearestPreset(), st = { t: 'status', nearest: np ? np.p.name + '（' + np.p.ja + '）' : null, target: null, practiceNext: null, score: null, s: {}, dmax: LIMITS.depth[1] };
   LINK_KEYS.forEach(function(k){ st.s[k] = state[k]; });
   if (PRACTICE.active && PRACTICE.target){
     st.target = PRACTICE.target.name;
@@ -1956,14 +2007,17 @@ function linkOpenPanel(){
   if (LINK.peer && !LINK.peer.destroyed) return;   // 待ち受け中ならそのまま QR を見せる
   linkMsg('連動機能を読み込んでいます…');
   prEl('linkQR').hidden = true; prEl('linkUrl').value = '';
-  Promise.all([linkLoad(LINK_LIBS.peer), linkLoad(LINK_LIBS.qr)]).then(linkHost, function(){
+  Promise.all([linkLoad(LINK_LIBS.peer), linkLoad(LINK_LIBS.qr)]).then(function(){
+    linkMsg('仲介サーバーに接続中…');
+    linkHost(linkIce());
+  }, function(){
     linkMsg('連動機能（PeerJS / QR コード）を読み込めませんでした。インターネット接続を確認してください。通常モードはそのまま使えます。', true);
   });
 }
-function linkHost(){
+function linkHost(ice){
   if (typeof window.Peer !== 'function'){ linkMsg('PeerJS を初期化できませんでした。', true); return; }
   LINK.room = Math.random().toString(36).slice(2, 8);
-  var peer = new window.Peer(LINK_PREFIX + LINK.room);
+  var peer = new window.Peer(LINK_PREFIX + LINK.room, linkPeerOpts(ice, false));
   LINK.peer = peer;
   peer.on('open', function(){
     var base = location.href.split(/[?#]/)[0];
@@ -1976,10 +2030,13 @@ function linkHost(){
     linkMsg('スマホの接続を待っています…（部屋 ' + LINK.room + '）');
   });
   peer.on('connection', function(c){
+    if (!LINK.linked) linkMsg('スマホと接続中…');
     c.on('open', function(){
       if (LINK.conn && LINK.conn !== c){ try { LINK.conn.close(); } catch (e) {} }   // 新しいスマホを優先
       LINK.conn = c; LINK.lastRx = performance.now();
+      setText('linkPath', '');
       linkLayout(true);
+      linkPath(c).then(function(p){ if (LINK.conn === c && p) setText('linkPath', '（' + p + '）'); });
     });
     c.on('data', function(d){ if (c !== LINK.conn) return; LINK.lastRx = performance.now(); linkOnData(d); });
     c.on('close', function(){ if (c === LINK.conn){ LINK.conn = null; linkLayout(false); } });
@@ -1987,7 +2044,7 @@ function linkHost(){
   peer.on('disconnected', function(){ if (LINK.peer === peer && !peer.destroyed){ try { peer.reconnect(); } catch (e) {} } });
   peer.on('error', function(e){
     if (LINK.peer !== peer) return;
-    if (e && e.type === 'unavailable-id'){ try { peer.destroy(); } catch (x) {} LINK.peer = null; linkHost(); return; }
+    if (e && e.type === 'unavailable-id'){ try { peer.destroy(); } catch (x) {} LINK.peer = null; linkHost(ice); return; }
     linkMsg('接続エラー：' + (e && e.type ? e.type : e) + '（PeerJS の公開サーバーに届かない可能性があります）', true);
   });
 }
@@ -2001,8 +2058,29 @@ function linkOnData(d){
   }
 }
 
-/* ---------- スマホ側 ---------- */
+/* ---------- スマホ側 ----------
+   段階：1/3 仲介サーバーに接続中 → 2/3 PC を探しています → 3/3 PC と接続中 → 接続済み
+   まず直接接続を試し、PC が見つかってから LINK_DIRECT_MS たってもつながらなければ中継（TURN）だけで接続し直す。
+   LINK_WATCHDOG_MS つながらなければ最初からやり直す
+   （PC が見つからないときも同じ。PeerJS の仲介サーバーは、同じ相手への 2 回目以降の接続には「見つからない」を返さないため） */
 function ctlShow(conn, cls){ var e = prEl('ctlConn'); e.textContent = conn; e.className = cls || ''; }
+function ctlStage(n, t){ ctlShow(n + '/3 ' + t + (LINK.tries ? '（やり直し ' + LINK.tries + ' 回目）' : '')); }
+function ctlArmWatchdog(){
+  clearTimeout(LINK.watchdog);
+  LINK.watchdog = setTimeout(function(){
+    LINK.watchdog = 0;
+    LINK.tries++;
+    clearTimeout(LINK.directTimer); LINK.directTimer = 0;
+    clearTimeout(LINK.retryTimer); LINK.retryTimer = 0;
+    var c = LINK.conn; LINK.conn = null; if (c){ try { c.close(); } catch (e) {} }
+    var p = LINK.peer; LINK.peer = null; if (p){ try { p.destroy(); } catch (e) {} }
+    ctlStart(false);
+  }, LINK_WATCHDOG_MS);
+}
+function ctlToRelay(){
+  var p = LINK.peer; LINK.peer = null; if (p){ try { p.destroy(); } catch (e) {} }
+  ctlStart(true);
+}
 function ctlDrop(why){
   var c = LINK.conn; LINK.conn = null;
   if (c){ try { c.close(); } catch (e) {} }
@@ -2015,27 +2093,48 @@ function ctlRetry(){
 }
 function ctlConnect(){
   var peer = LINK.peer;
-  if (!peer || peer.destroyed){ ctlStart(); return; }
+  if (!peer || peer.destroyed){ ctlStart(false); return; }
   if (peer.disconnected){ try { peer.reconnect(); } catch (e) {} ctlRetry(); return; }
-  if (prEl('ctlConn').className !== 'ng') ctlShow('接続中…');   // 再試行中は切断理由を出したままにする
+  if (!LINK.watchdog) ctlArmWatchdog();
+  if (prEl('ctlConn').className !== 'ng') ctlStage(2, 'PC を探しています…');   // 再試行中は切断理由を出したままにする
   var c = peer.connect(LINK_PREFIX + CTRL_ROOM, { reliable: true });
+  var pc = c.peerConnection;
+  if (pc && pc.addEventListener) pc.addEventListener('signalingstatechange', function(){
+    // PC から応答（answer）が届いた＝PC が見つかった
+    if (pc.signalingState !== 'stable' || LINK.conn === c || LINK.peer !== peer) return;
+    ctlStage(3, 'PC と接続中…' + (LINK.relay ? '（中継）' : ''));
+    if (!LINK.relay && LINK.hasTurn && !LINK.directTimer){
+      LINK.directTimer = setTimeout(function(){ LINK.directTimer = 0; if (LINK.conn !== c && LINK.peer === peer) ctlToRelay(); }, LINK_DIRECT_MS);
+    }
+  });
   c.on('open', function(){
+    if (LINK.peer !== peer) return;
+    clearTimeout(LINK.directTimer); clearTimeout(LINK.watchdog); LINK.directTimer = LINK.watchdog = 0; LINK.tries = 0;
     // つながった直後は送らず、まず PC の値にダイヤルを合わせる
     LINK.conn = c; LINK.lastRx = performance.now(); LINK.sentKey = linkStateKey(); LINK.localT = 0;
-    ctlShow('接続中 ●', 'ok');
+    ctlShow('接続済み ●', 'ok');
+    linkPath(c).then(function(p){ if (LINK.conn === c && p) ctlShow('接続済み ●（' + p + '）', 'ok'); });
   });
   c.on('data', function(d){ if (c !== LINK.conn) return; LINK.lastRx = performance.now(); ctlOnData(d); });
   c.on('close', function(){ if (c === LINK.conn) ctlDrop('PC 側が閉じました'); });
   c.on('error', function(){ if (c === LINK.conn) ctlDrop('通信エラー'); });
 }
-function ctlStart(){
-  ctlShow('連動機能を読み込んでいます…');
+// relay = true：中継（TURN）だけで接続する
+function ctlStart(relay){
+  var gen = ++LINK.gen;
+  ctlStage(1, (relay ? '直接つながらないので中継に切り替えます。' : '') + '仲介サーバーに接続中…');
+  if (!LINK.watchdog) ctlArmWatchdog();
   linkLoad(LINK_LIBS.peer).then(function(){
-    var peer = new window.Peer();
+    if (gen !== LINK.gen) return;   // 待っているあいだにやり直しが始まった
+    var ice = linkIce();
+    LINK.hasTurn = linkHasTurn(ice);
+    LINK.relay = relay && LINK.hasTurn;
+    var peer = new window.Peer(linkPeerOpts(ice, LINK.relay));
     LINK.peer = peer;
-    peer.on('open', ctlConnect);
-    peer.on('disconnected', function(){ if (!peer.destroyed){ try { peer.reconnect(); } catch (e) {} } });
+    peer.on('open', function(){ if (LINK.peer === peer) ctlConnect(); });
+    peer.on('disconnected', function(){ if (LINK.peer === peer && !peer.destroyed){ try { peer.reconnect(); } catch (e) {} } });
     peer.on('error', function(e){
+      if (LINK.peer !== peer) return;
       var t = e && e.type;
       if (t === 'peer-unavailable') ctlShow('PC が見つかりません（PC で「📱 スマホで操作」を開いたままにしてください）— 再試行します…', 'ng');
       else ctlShow('接続エラー：' + t + ' — 再試行します…', 'ng');
@@ -2043,12 +2142,15 @@ function ctlStart(){
       ctlRetry();
     });
   }, function(){
+    if (gen !== LINK.gen) return;
+    clearTimeout(LINK.watchdog); LINK.watchdog = 0;
     ctlShow('連動機能（PeerJS）を読み込めませんでした。インターネット接続を確認してください', 'ng');
-    setTimeout(ctlStart, 5000);
+    setTimeout(function(){ if (gen === LINK.gen) ctlStart(false); }, 5000);
   });
 }
 function ctlOnData(d){
   if (!d || d.t !== 'status') return;
+  if (typeof d.dmax === 'number' && d.dmax > 0) LIMITS.depth[1] = d.dmax;
   setText('ctlNear', d.target ? '練習中：目標 ' + d.target + (typeof d.score === 'number' ? '（一致度 ' + d.score + '）' : '') : (d.nearest ? '≈ ' + d.nearest : '標準断面から外れています'));
   setText('ctlNext', d.practiceNext || '');
   // 操作していない間は PC 側の値（プリセット・答えを見る など）にダイヤルを合わせる
@@ -2061,7 +2163,7 @@ function ctlOnData(d){
 
 (function setupLink(){
   setInterval(function(){ try { linkTick(performance.now()); } catch (e) {} }, 33);
-  if (CTRL_ROOM){ ctlStart(); return; }
+  if (CTRL_ROOM){ ctlStart(false); return; }
   prEl('linkBtn').addEventListener('click', linkOpenPanel);
   prEl('linkOff').addEventListener('click', linkStop);
   prEl('linkCancel').addEventListener('click', linkStop);
@@ -2074,6 +2176,24 @@ function ctlOnData(d){
 })();
 
 window.TEESIM = { state: state, settings: settings, setParam: setParam, presets: PRESETS, goPreset: function(id){ var p = PRESETS.filter(function(x){ return x.id === id; })[0]; if (p){ cancelTween(); ['depth','rot','ante','lr','omni'].forEach(function(k){ setParam(k, p.s[k]); }); } } };
+}
+</script>
+<script>
+// 読み込み：スマホ側コントローラー（?controller=部屋ID）はハンドル操作を送るだけなので、Three.js と心臓データ（bodyparts3d.js、約2MB）を読み込まない
+(function(){
+  var room = (function(){ try { return new URLSearchParams(location.search).get('controller') || ''; } catch (e) { return ''; } })().replace(/[^0-9a-z]/gi, '');
+  if (room){ teesimMain(room); return; }
+  var srcs = [
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+    'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js',
+    'bodyparts3d.js'
+  ], left = srcs.length;
+  // async = false：並行して読み込み、書いた順に実行する。読めないものがあっても本体を呼び、本体のエラー表示に任せる
+  srcs.forEach(function(src){
+    var sc = document.createElement('script'); sc.src = src; sc.async = false;
+    sc.onload = sc.onerror = function(){ if (--left === 0){ fixPV(); teesimMain(''); } };
+    document.body.appendChild(sc);
+  });
 })();
 </script>
 </body>
