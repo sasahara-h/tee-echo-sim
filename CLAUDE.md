@@ -12,6 +12,7 @@
 - https://sasahara-h.github.io/tee-echo-sim/ （GitHub Pages、リポジトリ https://github.com/sasahara-h/tee-echo-sim の master ブランチのルート）
 - 更新するときは master に push するだけで反映される（ビルドは数分かかる。混んでいると 20 分ほど待つこともある）
 - 公開リポジトリなので、Wi-Fi のパスワード・APIキー・個人情報などはコミットしない
+  - 例外：Metered の TURN 認証情報は承知のうえで index.html に入れている（漏れたら Metered で作り直す）
 - コミットのメールアドレスは GitHub の非公開アドレス（`344892775+sasahara-h@users.noreply.github.com`、このリポジトリの `git config user.email`）にしてある
 
 ## 座標系と操作の符号
